@@ -391,18 +391,26 @@ else
                                             var rows = Model.BuildFileTreeRows(root.Nodes);
                                             <section class="nested-panel">
                                                 <div class="panel-heading"><h4>@root.RootPath</h4><span>@rows.Count entries</span></div>
-                                                @if (!string.IsNullOrWhiteSpace(root.Owner))
+                                                @if (!string.IsNullOrWhiteSpace(root.Owner) || root.Permissions.Count > 0)
                                                 {
-                                                    <p class="tree-security-line">Owner: @root.Owner</p>
-                                                }
-                                                @if (root.Permissions.Count > 0)
-                                                {
-                                                    <div class="tree-security-chips root-security-block">
-                                                        @foreach (var permission in root.Permissions)
-                                                        {
-                                                            <span class="security-chip">@permission</span>
-                                                        }
-                                                    </div>
+                                                    <details class="tree-security-panel root-security-block">
+                                                        <summary class="tree-security-summary">Root security</summary>
+                                                        <div class="tree-security-body">
+                                                            @if (!string.IsNullOrWhiteSpace(root.Owner))
+                                                            {
+                                                                <span class="tree-security-line">Owner: @root.Owner</span>
+                                                            }
+                                                            @if (root.Permissions.Count > 0)
+                                                            {
+                                                                <div class="tree-security-chips">
+                                                                    @foreach (var permission in root.Permissions)
+                                                                    {
+                                                                        <span class="security-chip">@permission</span>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    </details>
                                                 }
                                                 @if (rows.Count == 0)
                                                 {

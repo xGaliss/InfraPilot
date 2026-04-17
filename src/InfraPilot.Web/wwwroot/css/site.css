@@ -730,6 +730,28 @@ a {
   color: #6b645a;
 }
 
+.tree-security-panel {
+  margin-top: 0.2rem;
+}
+
+.tree-security-summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--brand-deep);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.tree-security-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree-security-body {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
 .tree-security-chips,
 .member-list {
   display: flex;

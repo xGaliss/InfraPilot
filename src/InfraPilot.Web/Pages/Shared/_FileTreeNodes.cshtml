@@ -11,18 +11,26 @@
                 <span class="tree-folder-namewrap">
                     <span class="tree-folder-title">@node.Name</span>
                     <span class="tree-folder-meta">@node.FullPath</span>
-                    @if (!string.IsNullOrWhiteSpace(node.Owner))
+                    @if (!string.IsNullOrWhiteSpace(node.Owner) || node.Permissions.Count > 0)
                     {
-                        <span class="tree-security-line">Owner: @node.Owner</span>
-                    }
-                    @if (node.Permissions.Count > 0)
-                    {
-                        <span class="tree-security-chips">
-                            @foreach (var permission in node.Permissions)
-                            {
-                                <span class="security-chip">@permission</span>
-                            }
-                        </span>
+                        <details class="tree-security-panel">
+                            <summary class="tree-security-summary">Security</summary>
+                            <div class="tree-security-body">
+                                @if (!string.IsNullOrWhiteSpace(node.Owner))
+                                {
+                                    <span class="tree-security-line">Owner: @node.Owner</span>
+                                }
+                                @if (node.Permissions.Count > 0)
+                                {
+                                    <span class="tree-security-chips">
+                                        @foreach (var permission in node.Permissions)
+                                        {
+                                            <span class="security-chip">@permission</span>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                        </details>
                     }
                 </span>
                 <span class="timestamp-chip">@node.Children.Count items</span>
@@ -47,18 +55,26 @@
             <span class="tree-folder-namewrap">
                 <span class="tree-folder-title">@node.Name</span>
                 <span class="tree-folder-meta">@node.FullPath</span>
-                @if (!string.IsNullOrWhiteSpace(node.Owner))
+                @if (!string.IsNullOrWhiteSpace(node.Owner) || node.Permissions.Count > 0)
                 {
-                    <span class="tree-security-line">Owner: @node.Owner</span>
-                }
-                @if (node.Permissions.Count > 0)
-                {
-                    <span class="tree-security-chips">
-                        @foreach (var permission in node.Permissions)
-                        {
-                            <span class="security-chip">@permission</span>
-                        }
-                    </span>
+                    <details class="tree-security-panel">
+                        <summary class="tree-security-summary">Security</summary>
+                        <div class="tree-security-body">
+                            @if (!string.IsNullOrWhiteSpace(node.Owner))
+                            {
+                                <span class="tree-security-line">Owner: @node.Owner</span>
+                            }
+                            @if (node.Permissions.Count > 0)
+                            {
+                                <span class="tree-security-chips">
+                                    @foreach (var permission in node.Permissions)
+                                    {
+                                        <span class="security-chip">@permission</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    </details>
                 }
             </span>
             <span class="timestamp-chip">@(node.SizeBytes is null ? "-" : $"{node.SizeBytes.Value:N0} B")</span>
