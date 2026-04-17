@@ -1,0 +1,40 @@
+@using InfraPilot.Contracts.Capabilities
+@model IReadOnlyList<CapabilitySnapshotHistoryItemDto>
+
+<section class="history-shell">
+    <div class="section-heading compact-heading">
+        <div>
+            <p class="eyebrow">Snapshot History</p>
+            <h2>Recent captures</h2>
+        </div>
+    </div>
+
+    @if (Model.Count == 0)
+    {
+        <p class="empty-state">No history has been captured for this capability yet.</p>
+    }
+    else
+    {
+        <div class="history-list">
+            @foreach (var item in Model)
+            {
+                <article class="history-item">
+                    <div class="history-item-head">
+                        <strong>@item.CollectedUtc.ToLocalTime().ToString("g")</strong>
+                        <span class="timestamp-chip">@item.ChangeSummary.Summary</span>
+                    </div>
+
+                    @if (item.ChangeSummary.Highlights.Count > 0)
+                    {
+                        <div class="change-highlight-list">
+                            @foreach (var highlight in item.ChangeSummary.Highlights)
+                            {
+                                <span class="change-highlight-chip">@highlight</span>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>

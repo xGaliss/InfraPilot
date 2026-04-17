@@ -12,13 +12,16 @@
 @{
     var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? string.Empty;
     var isFleetPage = string.Equals(currentPage, "/Index", StringComparison.OrdinalIgnoreCase);
+    var isActivityPage = string.Equals(currentPage, "/Activity", StringComparison.OrdinalIgnoreCase);
 }
 <body>
     <div class="app-shell">
         <header class="app-header">
             <div class="app-header-inner">
                 <div class="brand-block">
-                    <a class="brand-mark" asp-area="" asp-page="/Index">IP</a>
+                    <a class="brand-logo-link" asp-area="" asp-page="/Index">
+                        <img src="~/brand/infrahub-logo-nobg.svg" alt="InfraPilot logo" class="brand-logo" />
+                    </a>
                     <div>
                         <a class="brand-name" asp-area="" asp-page="/Index">InfraPilot</a>
                         <div class="brand-tagline">Agent-first server operations</div>
@@ -27,6 +30,7 @@
 
                 <nav class="top-nav">
                     <a class="top-nav-link @(isFleetPage ? "active" : null)" asp-area="" asp-page="/Index">Fleet</a>
+                    <a class="top-nav-link @(isActivityPage ? "active" : null)" asp-area="" asp-page="/Activity">Activity</a>
                 </nav>
             </div>
         </header>

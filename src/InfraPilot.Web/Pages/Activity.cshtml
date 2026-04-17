@@ -1,0 +1,103 @@
+@page
+@model InfraPilot.Web.Pages.ActivityModel
+@{
+    ViewData["Title"] = "Activity";
+}
+
+<div class="dashboard-shell">
+    <section class="hero-card activity-hero-card">
+        <div>
+            <p class="eyebrow">Activity Feed</p>
+            <h1>Recent infrastructure changes and captures.</h1>
+            <p class="hero-body">
+                Track the latest capability deltas published by your agents and jump into the workspace that changed.
+            </p>
+        </div>
+
+        <div class="hero-highlight">
+            <span class="highlight-label">Current scope</span>
+            <strong>@(Model.SelectedAgent?.DisplayName ?? "Whole fleet")</strong>
+            <p>@Model.Changes.Count recent change events loaded.</p>
+        </div>
+    </section>
+
+    <section class="fleet-toolbar">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Filters</p>
+                <h2>Focus the feed</h2>
+            </div>
+        </div>
+
+        <form method="get" class="filter-form">
+            <select name="agentId" class="filter-select">
+                <option value="">Whole fleet</option>
+                @foreach (var agent in Model.Agents.OrderBy(agent => agent.DisplayName, StringComparer.OrdinalIgnoreCase))
+                {
+                    <option value="@agent.AgentId" selected="@(Model.AgentId == agent.AgentId ? "selected" : null)">
+                        @agent.DisplayName (@agent.MachineName)
+                    </option>
+                }
+            </select>
+
+            <button type="submit" class="btn btn-primary">Apply</button>
+            <a asp-page="/Activity" class="btn btn-outline-secondary">Reset</a>
+        </form>
+    </section>
+
+    <section class="capability-card polished">
+        <div class="section-heading compact-heading">
+            <div>
+                <p class="eyebrow">Change Feed</p>
+                <h2>@(Model.SelectedAgent is null ? "Fleet activity" : $"Activity for {Model.SelectedAgent.DisplayName}")</h2>
+            </div>
+        </div>
+
+        @if (Model.Changes.Count == 0)
+        {
+            <p class="empty-state">No change events have been recorded yet. Wait for new snapshots after this version is running.</p>
+        }
+        else
+        {
+            <div class="activity-stream">
+                @foreach (var change in Model.Changes)
+                {
+                    var agent = Model.Agents.FirstOrDefault(item => item.AgentId == change.AgentId);
+                    <article class="activity-item">
+                        <div class="activity-item-head">
+                            <div>
+                                <p class="activity-title">@change.CapabilityKey</p>
+                                <div class="activity-meta">
+                                    <span>@(agent?.DisplayName ?? change.AgentId.ToString("D"))</span>
+                                    <span>@change.CollectedUtc.ToLocalTime().ToString("g")</span>
+                                    <span>@change.ChangeKind</span>
+                                </div>
+                            </div>
+                            @if (agent is not null)
+                            {
+                                <a asp-page="/Agents/Details"
+                                   asp-route-id="@agent.AgentId"
+                                   asp-route-section="@InfraPilot.Web.Pages.Agents.DetailsModel.MapCapabilityKeyToSection(change.CapabilityKey)"
+                                   class="btn btn-sm btn-outline-secondary">
+                                    Open agent
+                                </a>
+                            }
+                        </div>
+
+                        <p class="capability-preview">@change.Summary</p>
+
+                        @if (change.Highlights.Count > 0)
+                        {
+                            <div class="change-highlight-list">
+                                @foreach (var highlight in change.Highlights)
+                                {
+                                    <span class="change-highlight-chip">@highlight</span>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>

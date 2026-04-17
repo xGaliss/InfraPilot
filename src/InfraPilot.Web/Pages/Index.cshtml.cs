@@ -1,6 +1,7 @@
 namespace InfraPilot.Web.Pages;
 
 using InfraPilot.Contracts.Agents;
+using InfraPilot.Contracts.Changes;
 using InfraPilot.Contracts.Common;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -22,6 +23,8 @@ public sealed class IndexModel : PageModel
     public IReadOnlyList<AgentListItemDto> Agents { get; private set; } = [];
 
     public IReadOnlyList<AgentListItemDto> FilteredAgents { get; private set; } = [];
+
+    public IReadOnlyList<CapabilityChangeEventDto> RecentChanges { get; private set; } = [];
 
     public int HealthyCount => Agents.Count(agent => agent.HealthStatus == AgentHealthStatuses.Healthy);
 
@@ -46,7 +49,13 @@ public sealed class IndexModel : PageModel
 
     public async Task OnGetAsync(string? search, string? health, string? status, CancellationToken cancellationToken)
     {
-        Agents = await _centralApiClient.GetAgentsAsync(cancellationToken);
+        var agentsTask = _centralApiClient.GetAgentsAsync(cancellationToken);
+        var changesTask = _centralApiClient.GetChangeFeedAsync(null, 12, cancellationToken);
+
+        await Task.WhenAll(agentsTask, changesTask);
+
+        Agents = await agentsTask;
+        RecentChanges = await changesTask;
         Search = search?.Trim();
         Health = health?.Trim();
         Status = status?.Trim();

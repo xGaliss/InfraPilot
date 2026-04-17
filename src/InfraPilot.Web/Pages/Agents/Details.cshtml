@@ -257,6 +257,55 @@
                                     }
                                 </section>
 
+                                <section class="change-summary-shell">
+                                    <div class="section-heading compact-heading">
+                                        <div>
+                                            <p class="eyebrow">Change Feed</p>
+                                            <h2>Latest snapshot events</h2>
+                                        </div>
+                                    </div>
+
+                                    @if (Model.Agent.RecentChanges.Count == 0)
+                                    {
+                                        <p class="empty-state">No change events have been recorded for this agent yet.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="activity-stream compact-stream">
+                                            @foreach (var change in Model.Agent.RecentChanges.Take(8))
+                                            {
+                                                <article class="activity-item">
+                                                    <div class="activity-item-head">
+                                                        <div>
+                                                            <p class="activity-title">@change.CapabilityKey</p>
+                                                            <div class="activity-meta">
+                                                                <span>@change.CollectedUtc.ToLocalTime().ToString("g")</span>
+                                                                <span>@change.ChangeKind</span>
+                                                            </div>
+                                                        </div>
+                                                        <a asp-page="/Agents/Details"
+                                                           asp-route-id="@Model.Agent.AgentId"
+                                                           asp-route-section="@DetailsModel.MapCapabilityKeyToSection(change.CapabilityKey)"
+                                                           class="btn btn-sm btn-outline-secondary">
+                                                            Open capability
+                                                        </a>
+                                                    </div>
+                                                    <p class="capability-preview">@change.Summary</p>
+                                                    @if (change.Highlights.Count > 0)
+                                                    {
+                                                        <div class="change-highlight-list">
+                                                            @foreach (var highlight in change.Highlights)
+                                                            {
+                                                                <span class="change-highlight-chip">@highlight</span>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </article>
+                                            }
+                                        </div>
+                                    }
+                                </section>
+
                                 <div class="section-heading compact-heading">
                                     <div>
                                         <p class="eyebrow">Recent Activity</p>
@@ -309,6 +358,7 @@
                                         <p class="capability-preview">@serviceState.ChangeSummary.Summary</p>
                                     </section>
                                 }
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
                                 @if (services.Count == 0)
                                 {
                                     <p class="empty-state">No services matched the current filter.</p>
@@ -363,6 +413,7 @@
                                         <p class="capability-preview">@scheduledTaskState.ChangeSummary.Summary</p>
                                     </section>
                                 }
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
                                 @if (scheduledTasks.Count == 0)
                                 {
                                     <p class="empty-state">No scheduled tasks matched the current filter.</p>
@@ -417,6 +468,7 @@
                                         <p class="capability-preview">@iisState.ChangeSummary.Summary</p>
                                     </section>
                                 }
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
                                 <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>App Pools</h4><span>@appPools.Count total</span></div>
@@ -511,6 +563,7 @@
                                         <p class="capability-preview">@fileTreeState.ChangeSummary.Summary</p>
                                     </section>
                                 }
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
                                 @if (Model.FileTreeSnapshot.Roots.Count == 0)
                                 {
                                     <p class="empty-state">No file tree roots are configured or reachable on this agent.</p>
@@ -579,6 +632,7 @@
                                         <p class="capability-preview">@usersAndGroupsState.ChangeSummary.Summary</p>
                                     </section>
                                 }
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
                                 <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>Local Users</h4><span>@users.Count total</span></div>
@@ -655,6 +709,61 @@
                                         }
                                     </section>
                                 </div>
+                            </div>
+                        </article>
+                    }
+                    else if (Model.SelectedSection == DetailsModel.ActionsSection)
+                    {
+                        <article class="capability-card polished">
+                            <header class="capability-header">
+                                <div>
+                                    <h3>Actions</h3>
+                                    <p>Review the execution trail for this agent and cancel queued work before it is leased.</p>
+                                </div>
+                                <span class="timestamp-chip">@Model.Agent.RecentActions.Count recent actions</span>
+                            </header>
+                            <div class="tab-panel-body">
+                                @if (Model.Agent.RecentActions.Count == 0)
+                                {
+                                    <p class="empty-state">No actions have been recorded for this agent yet.</p>
+                                }
+                                else
+                                {
+                                    <div class="data-table-wrap">
+                                        <table class="table data-table">
+                                            <thead><tr><th>Created</th><th>Capability</th><th>Action</th><th>Target</th><th>Status</th><th>Attempts</th><th>Result</th><th>Control</th></tr></thead>
+                                            <tbody>
+                                            @foreach (var action in Model.Agent.RecentActions)
+                                            {
+                                                <tr>
+                                                    <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
+                                                    <td>@action.CapabilityKey</td>
+                                                    <td>@action.ActionKey</td>
+                                                    <td>@(action.TargetKey ?? "-")</td>
+                                                    <td><span class="state-pill">@action.Status</span></td>
+                                                    <td>@action.AttemptCount</td>
+                                                    <td>@(action.ResultMessage ?? action.ErrorMessage ?? "-")</td>
+                                                    <td>
+                                                        @if (string.Equals(action.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                                                        {
+                                                            <form method="post" asp-page-handler="CancelAction" class="inline-form">
+                                                                <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                                <input type="hidden" name="actionId" value="@action.ActionId" />
+                                                                <input type="hidden" name="section" value="@Model.SelectedSection" />
+                                                                <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                                                            </form>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="muted">Locked</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
                             </div>
                         </article>
                     }

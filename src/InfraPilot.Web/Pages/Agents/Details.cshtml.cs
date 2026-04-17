@@ -4,6 +4,7 @@ using System.Text.Json;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
+using InfraPilot.Contracts.Changes;
 using InfraPilot.Contracts.FileTree;
 using InfraPilot.Contracts.Iis;
 using InfraPilot.Contracts.ScheduledTasks;
@@ -54,6 +55,8 @@ public sealed class DetailsModel : PageModel
 
     public UsersAndGroupsSnapshotDto UsersAndGroupsSnapshot { get; private set; } = new();
 
+    public IReadOnlyList<CapabilitySnapshotHistoryItemDto> CapabilityHistory { get; private set; } = [];
+
     public async Task<IActionResult> OnGetAsync(Guid id, string? section, CancellationToken cancellationToken)
     {
         SelectedSection = NormalizeSection(section);
@@ -66,6 +69,31 @@ public sealed class DetailsModel : PageModel
         await _centralApiClient.ApproveAgentAsync(agentId, cancellationToken);
         StatusTone = "success";
         StatusMessage = "Agent approved. It can now publish snapshots and receive actions.";
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
+    }
+
+    public async Task<IActionResult> OnPostCancelActionAsync(
+        Guid agentId,
+        Guid actionId,
+        string? section,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var action = await _centralApiClient.CancelActionAsync(
+                actionId,
+                new ActionCommandCancelRequestDto("WebUI", "Cancelled from the agent workspace."),
+                cancellationToken);
+
+            StatusTone = "success";
+            StatusMessage = $"Cancelled {action.ActionKey} on {action.TargetKey ?? action.CapabilityKey}.";
+        }
+        catch (HttpRequestException exception)
+        {
+            StatusTone = "error";
+            StatusMessage = $"The action could not be cancelled. {exception.Message}";
+        }
+
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
     }
 
@@ -144,6 +172,12 @@ public sealed class DetailsModel : PageModel
                     break;
             }
         }
+
+        var selectedCapabilityKey = MapSectionToCapabilityKey(SelectedSection);
+        if (selectedCapabilityKey is not null)
+        {
+            CapabilityHistory = await _centralApiClient.GetCapabilityHistoryAsync(Agent.AgentId, selectedCapabilityKey, 12, cancellationToken);
+        }
     }
 
     public IReadOnlyList<FileTreeRowViewModel> BuildFileTreeRows(IReadOnlyList<FileTreeNodeDto>? nodes)
@@ -191,5 +225,27 @@ public sealed class DetailsModel : PageModel
             UsersAndGroupsSection => UsersAndGroupsSection,
             ActionsSection => ActionsSection,
             _ => OverviewSection
+        };
+
+    public static string? MapSectionToCapabilityKey(string section)
+        => section switch
+        {
+            ServicesSection => CapabilityKeys.Services,
+            TasksSection => CapabilityKeys.ScheduledTasks,
+            IisSection => CapabilityKeys.Iis,
+            FileTreeSection => CapabilityKeys.FileTree,
+            UsersAndGroupsSection => CapabilityKeys.UsersAndGroups,
+            _ => null
+        };
+
+    public static string? MapCapabilityKeyToSection(string capabilityKey)
+        => capabilityKey switch
+        {
+            CapabilityKeys.Services => ServicesSection,
+            CapabilityKeys.ScheduledTasks => TasksSection,
+            CapabilityKeys.Iis => IisSection,
+            CapabilityKeys.FileTree => FileTreeSection,
+            CapabilityKeys.UsersAndGroups => UsersAndGroupsSection,
+            _ => null
         };
 }

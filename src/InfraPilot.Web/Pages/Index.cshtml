@@ -47,6 +47,62 @@
         </article>
     </section>
 
+    <section class="capability-card polished">
+        <div class="section-heading compact-heading">
+            <div>
+                <p class="eyebrow">Recent Activity</p>
+                <h2>Latest capability changes across the fleet</h2>
+            </div>
+            <a asp-page="/Activity" class="btn btn-outline-secondary">Open full feed</a>
+        </div>
+
+        @if (Model.RecentChanges.Count == 0)
+        {
+            <p class="empty-state">No change events have been recorded yet. Wait for new snapshots after this version is running.</p>
+        }
+        else
+        {
+            <div class="activity-stream compact-stream">
+                @foreach (var change in Model.RecentChanges.Take(6))
+                {
+                    var agent = Model.Agents.FirstOrDefault(item => item.AgentId == change.AgentId);
+                    <article class="activity-item">
+                        <div class="activity-item-head">
+                            <div>
+                                <p class="activity-title">@change.CapabilityKey</p>
+                                <div class="activity-meta">
+                                    <span>@(agent?.DisplayName ?? change.AgentId.ToString("D"))</span>
+                                    <span>@change.CollectedUtc.ToLocalTime().ToString("g")</span>
+                                </div>
+                            </div>
+                            @if (agent is not null)
+                            {
+                                <a asp-page="/Agents/Details"
+                                   asp-route-id="@agent.AgentId"
+                                   asp-route-section="@InfraPilot.Web.Pages.Agents.DetailsModel.MapCapabilityKeyToSection(change.CapabilityKey)"
+                                   class="btn btn-sm btn-outline-secondary">
+                                    Open
+                                </a>
+                            }
+                        </div>
+
+                        <p class="capability-preview">@change.Summary</p>
+
+                        @if (change.Highlights.Count > 0)
+                        {
+                            <div class="change-highlight-list">
+                                @foreach (var highlight in change.Highlights.Take(3))
+                                {
+                                    <span class="change-highlight-chip">@highlight</span>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
     <section class="fleet-toolbar">
         <div class="section-heading">
             <div>
