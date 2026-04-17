@@ -20,11 +20,11 @@ public sealed class CentralApiClient
            ?? [];
 
     public async Task<AgentDetailDto?> GetAgentDetailAsync(Guid agentId, CancellationToken cancellationToken)
-        => await _httpClient.GetFromJsonAsync<AgentDetailDto>($"api/agents/{agentId:guid}", cancellationToken);
+        => await _httpClient.GetFromJsonAsync<AgentDetailDto>($"api/agents/{agentId:D}", cancellationToken);
 
     public async Task ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.PostAsync($"api/agents/{agentId:guid}/approve", content: null, cancellationToken);
+        using var response = await _httpClient.PostAsync($"api/agents/{agentId:D}/approve", content: null, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 

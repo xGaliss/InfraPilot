@@ -106,7 +106,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         AgentActionResultReportDto result,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/actions/{actionId:guid}/result");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/actions/{actionId:D}/result");
         AddAgentHeaders(request, identity);
         request.Content = JsonContent.Create(result);
 
