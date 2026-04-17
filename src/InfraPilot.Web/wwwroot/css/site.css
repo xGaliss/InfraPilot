@@ -704,6 +704,49 @@ a {
   align-self: start;
 }
 
+.dashboard-intro-card {
+  align-items: start;
+  min-height: auto;
+}
+
+.dashboard-intro-card .hero-copy h1 {
+  font-size: clamp(2rem, 3vw, 3rem);
+  max-width: 8ch;
+}
+
+.dashboard-intro-card .hero-copy {
+  gap: 0.35rem;
+}
+
+.dashboard-intro-card .hero-highlight {
+  min-height: 100%;
+}
+
+.agent-overview-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.agent-overview-card h1 {
+  font-size: clamp(1.9rem, 2.5vw, 2.7rem);
+  max-width: none;
+}
+
+.agent-overview-card .hero-meta-stack {
+  margin-top: 0.2rem;
+}
+
+.agent-overview-card .hero-actions {
+  min-width: 170px;
+  justify-self: end;
+}
+
+.agent-overview-card .hero-chip-row {
+  justify-content: flex-start;
+}
+
 .flash-banner {
   padding: 0.95rem 1.15rem;
   border-radius: 1rem;
@@ -1019,6 +1062,10 @@ a {
 
   .dashboard-hero,
   .hero-card {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-overview-card {
     grid-template-columns: 1fr;
   }
 
