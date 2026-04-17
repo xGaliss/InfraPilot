@@ -14,6 +14,7 @@
                 InfraPilot keeps enrollment, capability snapshots and remote actions in a single operational view.
                 You can spot stale agents, inspect their published surface and queue actions without touching the servers directly.
             </p>
+            <p class="agent-hint">Click any agent name or the detail button to inspect services, tasks, IIS and file tree.</p>
         </div>
 
         <div class="hero-highlight">
@@ -95,13 +96,17 @@
                         <div class="agent-card-top">
                             <div>
                                 <div class="card-title-row">
-                                    <h3>@agent.DisplayName</h3>
+                                    <h3>
+                                        <a asp-page="/Agents/Details" asp-route-id="@agent.AgentId" class="agent-title-link">
+                                            @agent.DisplayName
+                                        </a>
+                                    </h3>
                                     <span class="status-chip @Model.GetHealthClass(agent.HealthStatus)">@agent.HealthStatus</span>
                                 </div>
                                 <p class="agent-meta">@agent.MachineName · @agent.AgentVersion · @agent.Status</p>
                             </div>
 
-                            <a asp-page="/Agents/Details" asp-route-id="@agent.AgentId" class="btn btn-sm btn-dark-soft">Open</a>
+                            <a asp-page="/Agents/Details" asp-route-id="@agent.AgentId" class="btn btn-sm btn-dark-soft">View agent</a>
                         </div>
 
                         <div class="agent-metrics">
@@ -130,6 +135,10 @@
                                 <span class="capability-badge muted-badge">+@(agent.CapabilityKeys.Count - capabilities.Count)</span>
                             }
                         </div>
+
+                        <p class="capability-preview">
+                            Exposes @agent.CapabilityKeys.Count capabilities and keeps its latest published snapshot ready in the detail view.
+                        </p>
 
                         <div class="agent-card-footer">
                             <div class="action-stats">
