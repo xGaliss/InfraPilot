@@ -464,6 +464,30 @@ a {
   background: rgba(249, 247, 241, 0.84);
 }
 
+.history-item {
+  padding: 0;
+  overflow: hidden;
+}
+
+.history-item-summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem;
+}
+
+.history-item-summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-item-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0 1rem 1rem;
+  border-top: 1px solid rgba(226, 219, 208, 0.98);
+}
+
 .activity-item-head,
 .history-item-head {
   display: flex;
@@ -475,6 +499,44 @@ a {
 .history-item-title {
   display: grid;
   gap: 0.2rem;
+}
+
+.history-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.history-toggle {
+  pointer-events: none;
+}
+
+.history-section-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.history-diff-section {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(226, 219, 208, 0.98);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.history-diff-section h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: -0.02em;
+}
+
+.history-diff-lines {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-soft);
 }
 
 .activity-title {

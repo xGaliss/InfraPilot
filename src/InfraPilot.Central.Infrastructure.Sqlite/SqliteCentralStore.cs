@@ -938,6 +938,7 @@ public sealed class SqliteCentralStore : ICentralStore
                 latestSnapshot.CollectedUtc,
                 latestSnapshot.Hash,
                 latestSnapshot.PayloadJson,
+                previousSnapshot?.PayloadJson,
                 BuildChangeSummary(capabilityKey, latestSnapshot, previousSnapshot)));
         }
 

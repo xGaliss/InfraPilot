@@ -6,4 +6,5 @@ public sealed record CapabilitySnapshotHistoryItemDto(
     DateTimeOffset CollectedUtc,
     string Hash,
     string PayloadJson,
+    string? PreviousPayloadJson,
     CapabilityChangeSummaryDto ChangeSummary);

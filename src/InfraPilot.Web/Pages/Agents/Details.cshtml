@@ -358,7 +358,7 @@
                                         <p class="capability-preview">@serviceState.ChangeSummary.Summary</p>
                                     </section>
                                 }
-                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistoryEntries" />
                                 @if (services.Count == 0)
                                 {
                                     <p class="empty-state">No services matched the current filter.</p>
@@ -413,7 +413,7 @@
                                         <p class="capability-preview">@scheduledTaskState.ChangeSummary.Summary</p>
                                     </section>
                                 }
-                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistoryEntries" />
                                 @if (scheduledTasks.Count == 0)
                                 {
                                     <p class="empty-state">No scheduled tasks matched the current filter.</p>
@@ -468,7 +468,7 @@
                                         <p class="capability-preview">@iisState.ChangeSummary.Summary</p>
                                     </section>
                                 }
-                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistoryEntries" />
                                 <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>App Pools</h4><span>@appPools.Count total</span></div>
@@ -563,7 +563,7 @@
                                         <p class="capability-preview">@fileTreeState.ChangeSummary.Summary</p>
                                     </section>
                                 }
-                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistoryEntries" />
                                 @if (Model.FileTreeSnapshot.Roots.Count == 0)
                                 {
                                     <p class="empty-state">No file tree roots are configured or reachable on this agent.</p>
@@ -632,7 +632,7 @@
                                         <p class="capability-preview">@usersAndGroupsState.ChangeSummary.Summary</p>
                                     </section>
                                 }
-                                <partial name="_CapabilityHistory" model="Model.CapabilityHistory" />
+                                <partial name="_CapabilityHistory" model="Model.CapabilityHistoryEntries" />
                                 <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>Local Users</h4><span>@users.Count total</span></div>

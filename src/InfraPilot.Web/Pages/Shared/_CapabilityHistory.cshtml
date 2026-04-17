@@ -1,10 +1,8 @@
-@using InfraPilot.Contracts.Capabilities
-@model IReadOnlyList<CapabilitySnapshotHistoryItemDto>
+@model IReadOnlyList<InfraPilot.Web.Pages.Agents.DetailsModel.CapabilityHistoryEntryViewModel>
 
 @{
     var changedSnapshots = Model
-        .Where(item => item.ChangeSummary.HasChanges)
-        .OrderByDescending(item => item.CollectedUtc)
+        .OrderByDescending(item => item.Item.CollectedUtc)
         .ToList();
 }
 
@@ -25,29 +23,58 @@
         <div class="history-list">
             @foreach (var item in changedSnapshots)
             {
-                <article class="history-item">
-                    <div class="history-item-head">
-                        <div class="history-item-title">
-                            <strong>@item.CollectedUtc.ToLocalTime().ToString("g")</strong>
-                            <span class="muted">
-                                Compared with @(item.ChangeSummary.PreviousCollectedUtc?.ToLocalTime().ToString("g") ?? "the previous snapshot")
-                            </span>
+                <details class="history-item">
+                    <summary class="history-item-summary">
+                        <div class="history-item-head">
+                            <div class="history-item-title">
+                                <strong>@item.Item.CollectedUtc.ToLocalTime().ToString("g")</strong>
+                                <span class="muted">
+                                    Compared with @(item.Item.ChangeSummary.PreviousCollectedUtc?.ToLocalTime().ToString("g") ?? "the previous snapshot")
+                                </span>
+                            </div>
+                            <div class="history-item-actions">
+                                <span class="timestamp-chip">Changed</span>
+                                <span class="btn btn-sm btn-outline-secondary history-toggle">View change</span>
+                            </div>
                         </div>
-                        <span class="timestamp-chip">Changed</span>
+
+                        <p class="capability-preview">@item.Item.ChangeSummary.Summary</p>
+                    </summary>
+
+                    <div class="history-item-body">
+                        @if (item.Item.ChangeSummary.Highlights.Count > 0)
+                        {
+                            <div class="change-highlight-list">
+                                @foreach (var highlight in item.Item.ChangeSummary.Highlights)
+                                {
+                                    <span class="change-highlight-chip">@highlight</span>
+                                }
+                            </div>
+                        }
+
+                        @if (item.Sections.Count == 0)
+                        {
+                            <p class="empty-state">No detailed diff lines were generated for this capture.</p>
+                        }
+                        else
+                        {
+                            <div class="history-section-list">
+                                @foreach (var diffSection in item.Sections)
+                                {
+                                    <section class="history-diff-section">
+                                        <h3>@diffSection.Title</h3>
+                                        <ul class="history-diff-lines">
+                                            @foreach (var line in diffSection.Lines)
+                                            {
+                                                <li>@line</li>
+                                            }
+                                        </ul>
+                                    </section>
+                                }
+                            </div>
+                        }
                     </div>
-
-                    <p class="capability-preview">@item.ChangeSummary.Summary</p>
-
-                    @if (item.ChangeSummary.Highlights.Count > 0)
-                    {
-                        <div class="change-highlight-list">
-                            @foreach (var highlight in item.ChangeSummary.Highlights)
-                            {
-                                <span class="change-highlight-chip">@highlight</span>
-                            }
-                        </div>
-                    }
-                </article>
+                </details>
             }
         </div>
     }
