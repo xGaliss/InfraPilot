@@ -7,4 +7,5 @@ public static class ActionStatuses
     public const string Succeeded = "Succeeded";
     public const string Failed = "Failed";
     public const string TimedOut = "TimedOut";
+    public const string Cancelled = "Cancelled";
 }

@@ -3,6 +3,7 @@ namespace InfraPilot.Central.Application;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
+using InfraPilot.Contracts.Changes;
 
 public interface ICentralStore
 {
@@ -31,4 +32,21 @@ public interface ICentralStore
     Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken);
 
     Task<ActionCommandSummaryDto> CreateActionAsync(ActionCommandCreateRequestDto request, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<CapabilitySnapshotHistoryItemDto>> GetCapabilityHistoryAsync(
+        Guid agentId,
+        string capabilityKey,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<CapabilityChangeEventDto>> GetChangeFeedAsync(
+        Guid? agentId,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task<ActionCommandSummaryDto?> CancelPendingActionAsync(
+        Guid actionId,
+        string requestedBy,
+        string? reason,
+        CancellationToken cancellationToken);
 }

@@ -182,6 +182,30 @@ app.MapGet("/api/agents/{agentId:guid}", async (Guid agentId, CentralService cen
     return detail is null ? Results.NotFound() : Results.Ok(detail);
 });
 
+app.MapGet("/api/agents/{agentId:guid}/capabilities/{capabilityKey}/history", async (
+    Guid agentId,
+    string capabilityKey,
+    int? take,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+{
+    var history = await centralService.GetCapabilityHistoryAsync(agentId, capabilityKey, take ?? 25, cancellationToken);
+    return Results.Ok(history);
+});
+
+app.MapGet("/api/agents/{agentId:guid}/changes", async (
+    Guid agentId,
+    int? take,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await centralService.GetChangeFeedAsync(agentId, take ?? 20, cancellationToken)));
+
+app.MapGet("/api/changes", async (
+    int? take,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await centralService.GetChangeFeedAsync(null, take ?? 50, cancellationToken)));
+
 app.MapPost("/api/agents/{agentId:guid}/approve", async (Guid agentId, CentralService centralService, CancellationToken cancellationToken) =>
 {
     var approved = await centralService.ApproveAgentAsync(agentId, cancellationToken);
@@ -201,6 +225,23 @@ app.MapPost("/api/actions", async (
     catch (KeyNotFoundException)
     {
         return Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+});
+
+app.MapPost("/api/actions/{actionId:guid}/cancel", async (
+    Guid actionId,
+    ActionCommandCancelRequestDto payload,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var action = await centralService.CancelPendingActionAsync(actionId, payload, cancellationToken);
+        return Results.Ok(action);
     }
     catch (InvalidOperationException exception)
     {

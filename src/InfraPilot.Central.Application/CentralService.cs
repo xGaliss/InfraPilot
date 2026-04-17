@@ -3,6 +3,7 @@ namespace InfraPilot.Central.Application;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
+using InfraPilot.Contracts.Changes;
 using InfraPilot.Contracts.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -139,6 +140,19 @@ public sealed class CentralService
     public Task<AgentDetailDto?> GetAgentDetailAsync(Guid agentId, CancellationToken cancellationToken)
         => _centralStore.GetAgentDetailAsync(agentId, cancellationToken);
 
+    public Task<IReadOnlyList<CapabilitySnapshotHistoryItemDto>> GetCapabilityHistoryAsync(
+        Guid agentId,
+        string capabilityKey,
+        int take,
+        CancellationToken cancellationToken)
+        => _centralStore.GetCapabilityHistoryAsync(agentId, capabilityKey, NormalizeTake(take, 5, 100), cancellationToken);
+
+    public Task<IReadOnlyList<CapabilityChangeEventDto>> GetChangeFeedAsync(
+        Guid? agentId,
+        int take,
+        CancellationToken cancellationToken)
+        => _centralStore.GetChangeFeedAsync(agentId, NormalizeTake(take, 10, 100), cancellationToken);
+
     public Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
         => _centralStore.ApproveAgentAsync(agentId, cancellationToken);
 
@@ -206,6 +220,26 @@ public sealed class CentralService
         return await _centralStore.CreateActionAsync(request, cancellationToken);
     }
 
+    public async Task<ActionCommandSummaryDto> CancelPendingActionAsync(
+        Guid actionId,
+        ActionCommandCancelRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.RequestedBy))
+        {
+            throw new InvalidOperationException("RequestedBy is required.");
+        }
+
+        var cancelled = await _centralStore.CancelPendingActionAsync(
+            actionId,
+            request.RequestedBy,
+            request.Reason,
+            cancellationToken);
+
+        return cancelled
+               ?? throw new InvalidOperationException("Only pending actions can be cancelled.");
+    }
+
     private async Task<StoredAgent> GetAuthorizedAgentAsync(
         string installationId,
         string? token,
@@ -232,4 +266,7 @@ public sealed class CentralService
             throw new InvalidOperationException($"Agent is not approved. Current status: {agent.Status}.");
         }
     }
+
+    private static int NormalizeTake(int requestedTake, int defaultTake, int maxTake)
+        => requestedTake <= 0 ? defaultTake : Math.Min(requestedTake, maxTake);
 }

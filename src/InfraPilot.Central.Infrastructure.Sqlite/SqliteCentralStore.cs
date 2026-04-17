@@ -5,6 +5,7 @@ using InfraPilot.Central.Application;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
+using InfraPilot.Contracts.Changes;
 using InfraPilot.Contracts.Common;
 using InfraPilot.Contracts.FileTree;
 using InfraPilot.Contracts.Iis;
@@ -68,6 +69,19 @@ public sealed class SqliteCentralStore : ICentralStore
                 PayloadJson TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS CapabilityChangeEvents (
+                ChangeEventId TEXT PRIMARY KEY,
+                AgentId TEXT NOT NULL,
+                CapabilityKey TEXT NOT NULL,
+                SnapshotId TEXT NOT NULL,
+                PreviousSnapshotId TEXT NULL,
+                ChangeKind TEXT NOT NULL,
+                CollectedUtc TEXT NOT NULL,
+                PreviousCollectedUtc TEXT NULL,
+                Summary TEXT NOT NULL,
+                HighlightsJson TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS ActionCommands (
                 ActionId TEXT PRIMARY KEY,
                 AgentId TEXT NOT NULL,
@@ -81,6 +95,7 @@ public sealed class SqliteCentralStore : ICentralStore
                 LeasedUtc TEXT NULL,
                 LeaseExpiresUtc TEXT NULL,
                 CompletedUtc TEXT NULL,
+                AttemptCount INTEGER NOT NULL DEFAULT 0,
                 ResultMessage TEXT NULL,
                 ErrorMessage TEXT NULL,
                 OutputJson TEXT NULL
@@ -89,11 +104,18 @@ public sealed class SqliteCentralStore : ICentralStore
             CREATE INDEX IF NOT EXISTS IX_CapabilitySnapshots_Agent_Capability_CollectedUtc
                 ON CapabilitySnapshots (AgentId, CapabilityKey, CollectedUtc DESC);
 
+            CREATE INDEX IF NOT EXISTS IX_CapabilityChangeEvents_Agent_CollectedUtc
+                ON CapabilityChangeEvents (AgentId, CollectedUtc DESC);
+
+            CREATE INDEX IF NOT EXISTS IX_CapabilityChangeEvents_Agent_Capability_CollectedUtc
+                ON CapabilityChangeEvents (AgentId, CapabilityKey, CollectedUtc DESC);
+
             CREATE INDEX IF NOT EXISTS IX_ActionCommands_Agent_Status_CreatedUtc
                 ON ActionCommands (AgentId, Status, CreatedUtc);
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureColumnAsync(connection, "ActionCommands", "AttemptCount", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
     }
 
     public async Task<StoredAgent?> GetAgentByInstallationIdAsync(string installationId, CancellationToken cancellationToken)
@@ -201,6 +223,14 @@ public sealed class SqliteCentralStore : ICentralStore
 
         foreach (var snapshot in snapshots)
         {
+            var previousSnapshot = await GetLatestCapabilitySnapshotAsync(
+                connection,
+                transaction,
+                agentId,
+                snapshot.CapabilityKey,
+                cancellationToken);
+            var snapshotId = Guid.NewGuid();
+
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText =
@@ -208,13 +238,25 @@ public sealed class SqliteCentralStore : ICentralStore
                 INSERT INTO CapabilitySnapshots (SnapshotId, AgentId, CapabilityKey, CollectedUtc, Hash, PayloadJson)
                 VALUES ($snapshotId, $agentId, $capabilityKey, $collectedUtc, $hash, $payloadJson);
                 """;
-            command.Parameters.AddWithValue("$snapshotId", Guid.NewGuid().ToString("D"));
+            command.Parameters.AddWithValue("$snapshotId", snapshotId.ToString("D"));
             command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
             command.Parameters.AddWithValue("$capabilityKey", snapshot.CapabilityKey);
             command.Parameters.AddWithValue("$collectedUtc", ToDb(collectedUtc));
             command.Parameters.AddWithValue("$hash", snapshot.Hash);
             command.Parameters.AddWithValue("$payloadJson", snapshot.PayloadJson);
             await command.ExecuteNonQueryAsync(cancellationToken);
+
+            var latestSnapshot = new CapabilitySnapshotEnvelope(
+                snapshotId,
+                collectedUtc,
+                snapshot.Hash,
+                snapshot.PayloadJson);
+            var changeSummary = BuildChangeSummary(snapshot.CapabilityKey, latestSnapshot, previousSnapshot);
+            var changeEvent = BuildChangeEvent(agentId, snapshot.CapabilityKey, latestSnapshot, previousSnapshot, changeSummary);
+            if (changeEvent is not null)
+            {
+                await InsertChangeEventAsync(connection, transaction, latestSnapshot, previousSnapshot, changeEvent, cancellationToken);
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -299,7 +341,8 @@ public sealed class SqliteCentralStore : ICentralStore
                 UPDATE ActionCommands
                 SET Status = $status,
                     LeasedUtc = $leasedUtc,
-                    LeaseExpiresUtc = $leaseExpiresUtc
+                    LeaseExpiresUtc = $leaseExpiresUtc,
+                    AttemptCount = AttemptCount + 1
                 WHERE ActionId = $actionId;
                 """;
             updateCommand.Parameters.AddWithValue("$status", ActionStatuses.InProgress);
@@ -324,6 +367,31 @@ public sealed class SqliteCentralStore : ICentralStore
     public async Task<bool> CompleteActionAsync(Guid agentId, Guid actionId, AgentActionResultReportDto result, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var timeoutCommand = connection.CreateCommand())
+        {
+            timeoutCommand.CommandText =
+                """
+                UPDATE ActionCommands
+                SET Status = $timedOut,
+                    CompletedUtc = $completedUtc,
+                    ErrorMessage = COALESCE(ErrorMessage, 'Lease expired before the agent reported a final status.')
+                WHERE ActionId = $actionId
+                  AND AgentId = $agentId
+                  AND Status = $inProgress
+                  AND LeaseExpiresUtc IS NOT NULL
+                  AND LeaseExpiresUtc < $now;
+                """;
+            timeoutCommand.Parameters.AddWithValue("$timedOut", ActionStatuses.TimedOut);
+            timeoutCommand.Parameters.AddWithValue("$completedUtc", ToDb(now));
+            timeoutCommand.Parameters.AddWithValue("$actionId", actionId.ToString("D"));
+            timeoutCommand.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+            timeoutCommand.Parameters.AddWithValue("$inProgress", ActionStatuses.InProgress);
+            timeoutCommand.Parameters.AddWithValue("$now", ToDb(now));
+            await timeoutCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -335,7 +403,8 @@ public sealed class SqliteCentralStore : ICentralStore
                 OutputJson = $outputJson
             WHERE ActionId = $actionId
               AND AgentId = $agentId
-              AND Status = $inProgress;
+              AND Status = $inProgress
+              AND (LeaseExpiresUtc IS NULL OR LeaseExpiresUtc >= $now);
             """;
         command.Parameters.AddWithValue("$status", result.Status);
         command.Parameters.AddWithValue("$completedUtc", ToDb(result.CompletedUtc));
@@ -345,6 +414,7 @@ public sealed class SqliteCentralStore : ICentralStore
         command.Parameters.AddWithValue("$actionId", actionId.ToString("D"));
         command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
         command.Parameters.AddWithValue("$inProgress", ActionStatuses.InProgress);
+        command.Parameters.AddWithValue("$now", ToDb(now));
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
@@ -475,6 +545,7 @@ public sealed class SqliteCentralStore : ICentralStore
 
         var capabilities = await GetCapabilityStatesAsync(connection, agentId, cancellationToken);
         var recentActions = await GetRecentActionsAsync(connection, agentId, cancellationToken);
+        var recentChanges = await GetRecentChangeEventsAsync(connection, agentId, 20, cancellationToken);
         var latestSnapshotLookup = await GetLatestSnapshotLookupAsync(connection, cancellationToken);
         var actionStatsLookup = await GetActionQueueStatsAsync(connection, cancellationToken);
         latestSnapshotLookup.TryGetValue(agentId, out var lastCollectedUtc);
@@ -496,7 +567,8 @@ public sealed class SqliteCentralStore : ICentralStore
             actionStats?.InProgressCount ?? 0,
             actionStats?.FailedCount ?? 0,
             capabilities,
-            recentActions);
+            recentActions,
+            recentChanges);
     }
 
     public async Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
@@ -527,9 +599,9 @@ public sealed class SqliteCentralStore : ICentralStore
         command.CommandText =
             """
             INSERT INTO ActionCommands (
-                ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, PayloadJson, Status, RequestedBy, CreatedUtc
+                ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, PayloadJson, Status, RequestedBy, CreatedUtc, AttemptCount
             ) VALUES (
-                $actionId, $agentId, $capabilityKey, $actionKey, $targetKey, $payloadJson, $status, $requestedBy, $createdUtc
+                $actionId, $agentId, $capabilityKey, $actionKey, $targetKey, $payloadJson, $status, $requestedBy, $createdUtc, $attemptCount
             );
             """;
         command.Parameters.AddWithValue("$actionId", actionId.ToString("D"));
@@ -541,6 +613,7 @@ public sealed class SqliteCentralStore : ICentralStore
         command.Parameters.AddWithValue("$status", ActionStatuses.Pending);
         command.Parameters.AddWithValue("$requestedBy", request.RequestedBy);
         command.Parameters.AddWithValue("$createdUtc", ToDb(now));
+        command.Parameters.AddWithValue("$attemptCount", 0);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return new ActionCommandSummaryDto(
@@ -555,8 +628,65 @@ public sealed class SqliteCentralStore : ICentralStore
             null,
             null,
             null,
+            0,
             null,
             null);
+    }
+
+    public async Task<IReadOnlyList<CapabilitySnapshotHistoryItemDto>> GetCapabilityHistoryAsync(
+        Guid agentId,
+        string capabilityKey,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var snapshots = await GetCapabilitySnapshotHistoryInternalAsync(connection, agentId, capabilityKey, take, cancellationToken);
+        return snapshots;
+    }
+
+    public async Task<IReadOnlyList<CapabilityChangeEventDto>> GetChangeFeedAsync(
+        Guid? agentId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        return await GetRecentChangeEventsAsync(connection, agentId, take, cancellationToken);
+    }
+
+    public async Task<ActionCommandSummaryDto?> CancelPendingActionAsync(
+        Guid actionId,
+        string requestedBy,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var summary = string.IsNullOrWhiteSpace(reason)
+            ? $"Cancelled by {requestedBy}."
+            : $"Cancelled by {requestedBy}. {reason.Trim()}";
+
+        await using var updateCommand = connection.CreateCommand();
+        updateCommand.CommandText =
+            """
+            UPDATE ActionCommands
+            SET Status = $status,
+                CompletedUtc = $completedUtc,
+                ResultMessage = $resultMessage
+            WHERE ActionId = $actionId
+              AND Status = $pending;
+            """;
+        updateCommand.Parameters.AddWithValue("$status", ActionStatuses.Cancelled);
+        updateCommand.Parameters.AddWithValue("$completedUtc", ToDb(now));
+        updateCommand.Parameters.AddWithValue("$resultMessage", summary);
+        updateCommand.Parameters.AddWithValue("$actionId", actionId.ToString("D"));
+        updateCommand.Parameters.AddWithValue("$pending", ActionStatuses.Pending);
+
+        if (await updateCommand.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await GetActionSummaryByIdAsync(connection, actionId, cancellationToken);
     }
 
     private async Task<IReadOnlyDictionary<Guid, IReadOnlyList<string>>> GetCapabilityKeysAsync(SqliteConnection connection, CancellationToken cancellationToken)
@@ -598,7 +728,7 @@ public sealed class SqliteCentralStore : ICentralStore
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, Status, RequestedBy, CreatedUtc, LeasedUtc, LeaseExpiresUtc, CompletedUtc, ResultMessage, ErrorMessage
+            SELECT ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, Status, RequestedBy, CreatedUtc, LeasedUtc, LeaseExpiresUtc, CompletedUtc, AttemptCount, ResultMessage, ErrorMessage
             FROM ActionCommands
             ORDER BY CreatedUtc DESC;
             """;
@@ -624,8 +754,9 @@ public sealed class SqliteCentralStore : ICentralStore
                 reader.IsDBNull(8) ? null : FromDb(reader.GetString(8)),
                 reader.IsDBNull(9) ? null : FromDb(reader.GetString(9)),
                 reader.IsDBNull(10) ? null : FromDb(reader.GetString(10)),
-                reader.IsDBNull(11) ? null : reader.GetString(11),
-                reader.IsDBNull(12) ? null : reader.GetString(12));
+                reader.IsDBNull(11) ? 0 : Convert.ToInt32(reader.GetValue(11)),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13));
         }
 
         return result;
@@ -732,7 +863,7 @@ public sealed class SqliteCentralStore : ICentralStore
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT CapabilityKey, CollectedUtc, Hash, PayloadJson
+            SELECT SnapshotId, CapabilityKey, CollectedUtc, Hash, PayloadJson
             FROM CapabilitySnapshots
             WHERE AgentId = $agentId
             ORDER BY CapabilityKey, CollectedUtc DESC;
@@ -742,7 +873,7 @@ public sealed class SqliteCentralStore : ICentralStore
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var capabilityKey = reader.GetString(0);
+            var capabilityKey = reader.GetString(1);
             if (!result.TryGetValue(capabilityKey, out var snapshots))
             {
                 snapshots = [];
@@ -755,12 +886,96 @@ public sealed class SqliteCentralStore : ICentralStore
             }
 
             snapshots.Add(new CapabilitySnapshotEnvelope(
+                Guid.Parse(reader.GetString(0)),
+                FromDb(reader.GetString(2)),
+                reader.GetString(3),
+                reader.GetString(4)));
+        }
+
+        return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<CapabilitySnapshotEnvelope>)pair.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<IReadOnlyList<CapabilitySnapshotHistoryItemDto>> GetCapabilitySnapshotHistoryInternalAsync(
+        SqliteConnection connection,
+        Guid agentId,
+        string capabilityKey,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var snapshots = new List<CapabilitySnapshotEnvelope>();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT SnapshotId, CollectedUtc, Hash, PayloadJson
+            FROM CapabilitySnapshots
+            WHERE AgentId = $agentId
+              AND CapabilityKey = $capabilityKey
+            ORDER BY CollectedUtc DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+        command.Parameters.AddWithValue("$capabilityKey", capabilityKey);
+        command.Parameters.AddWithValue("$limit", take + 1);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            snapshots.Add(new CapabilitySnapshotEnvelope(
+                Guid.Parse(reader.GetString(0)),
                 FromDb(reader.GetString(1)),
                 reader.GetString(2),
                 reader.GetString(3)));
         }
 
-        return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<CapabilitySnapshotEnvelope>)pair.Value, StringComparer.OrdinalIgnoreCase);
+        var history = new List<CapabilitySnapshotHistoryItemDto>();
+        for (var index = 0; index < Math.Min(take, snapshots.Count); index++)
+        {
+            var latestSnapshot = snapshots[index];
+            var previousSnapshot = index + 1 < snapshots.Count ? snapshots[index + 1] : null;
+            history.Add(new CapabilitySnapshotHistoryItemDto(
+                latestSnapshot.SnapshotId,
+                capabilityKey,
+                latestSnapshot.CollectedUtc,
+                latestSnapshot.Hash,
+                latestSnapshot.PayloadJson,
+                BuildChangeSummary(capabilityKey, latestSnapshot, previousSnapshot)));
+        }
+
+        return history;
+    }
+
+    private async Task<CapabilitySnapshotEnvelope?> GetLatestCapabilitySnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid agentId,
+        string capabilityKey,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT SnapshotId, CollectedUtc, Hash, PayloadJson
+            FROM CapabilitySnapshots
+            WHERE AgentId = $agentId
+              AND CapabilityKey = $capabilityKey
+            ORDER BY CollectedUtc DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+        command.Parameters.AddWithValue("$capabilityKey", capabilityKey);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new CapabilitySnapshotEnvelope(
+            Guid.Parse(reader.GetString(0)),
+            FromDb(reader.GetString(1)),
+            reader.GetString(2),
+            reader.GetString(3));
     }
 
     private static CapabilityChangeSummaryDto BuildChangeSummary(
@@ -792,6 +1007,42 @@ public sealed class SqliteCentralStore : ICentralStore
             CapabilityKeys.UsersAndGroups => BuildUsersAndGroupsChangeSummary(latestSnapshot, previousSnapshot),
             _ => new CapabilityChangeSummaryDto(true, true, previousSnapshot.CollectedUtc, "Snapshot content changed.", [])
         };
+    }
+
+    private static CapabilityChangeEventDto? BuildChangeEvent(
+        Guid agentId,
+        string capabilityKey,
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope? previousSnapshot,
+        CapabilityChangeSummaryDto changeSummary)
+    {
+        if (!changeSummary.HasPreviousSnapshot)
+        {
+            return new CapabilityChangeEventDto(
+                Guid.NewGuid(),
+                agentId,
+                capabilityKey,
+                CapabilityChangeKinds.InitialSnapshot,
+                latestSnapshot.CollectedUtc,
+                null,
+                changeSummary.Summary,
+                changeSummary.Highlights);
+        }
+
+        if (!changeSummary.HasChanges)
+        {
+            return null;
+        }
+
+        return new CapabilityChangeEventDto(
+            Guid.NewGuid(),
+            agentId,
+            capabilityKey,
+            CapabilityChangeKinds.SnapshotChanged,
+            latestSnapshot.CollectedUtc,
+            previousSnapshot?.CollectedUtc,
+            changeSummary.Summary,
+            changeSummary.Highlights);
     }
 
     private static CapabilityChangeSummaryDto BuildServicesChangeSummary(
@@ -1024,6 +1275,83 @@ public sealed class SqliteCentralStore : ICentralStore
     private static IEnumerable<string> FormatHighlights(string prefix, IReadOnlyList<string> items)
         => items.Take(2).Select(item => $"{prefix}: {item}");
 
+    private async Task InsertChangeEventAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope? previousSnapshot,
+        CapabilityChangeEventDto changeEvent,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            INSERT INTO CapabilityChangeEvents (
+                ChangeEventId, AgentId, CapabilityKey, SnapshotId, PreviousSnapshotId, ChangeKind, CollectedUtc, PreviousCollectedUtc, Summary, HighlightsJson
+            ) VALUES (
+                $changeEventId, $agentId, $capabilityKey, $snapshotId, $previousSnapshotId, $changeKind, $collectedUtc, $previousCollectedUtc, $summary, $highlightsJson
+            );
+            """;
+        command.Parameters.AddWithValue("$changeEventId", changeEvent.ChangeEventId.ToString("D"));
+        command.Parameters.AddWithValue("$agentId", changeEvent.AgentId.ToString("D"));
+        command.Parameters.AddWithValue("$capabilityKey", changeEvent.CapabilityKey);
+        command.Parameters.AddWithValue("$snapshotId", latestSnapshot.SnapshotId.ToString("D"));
+        command.Parameters.AddWithValue("$previousSnapshotId", previousSnapshot is null ? DBNull.Value : previousSnapshot.SnapshotId.ToString("D"));
+        command.Parameters.AddWithValue("$changeKind", changeEvent.ChangeKind);
+        command.Parameters.AddWithValue("$collectedUtc", ToDb(changeEvent.CollectedUtc));
+        command.Parameters.AddWithValue("$previousCollectedUtc", changeEvent.PreviousCollectedUtc is null ? DBNull.Value : ToDb(changeEvent.PreviousCollectedUtc.Value));
+        command.Parameters.AddWithValue("$summary", changeEvent.Summary);
+        command.Parameters.AddWithValue("$highlightsJson", JsonSerializer.Serialize(changeEvent.Highlights, JsonOptions));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<CapabilityChangeEventDto>> GetRecentChangeEventsAsync(
+        SqliteConnection connection,
+        Guid? agentId,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var changes = new List<CapabilityChangeEventDto>();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            agentId is null
+                ? """
+                  SELECT ChangeEventId, AgentId, CapabilityKey, ChangeKind, CollectedUtc, PreviousCollectedUtc, Summary, HighlightsJson
+                  FROM CapabilityChangeEvents
+                  ORDER BY CollectedUtc DESC
+                  LIMIT $take;
+                  """
+                : """
+                  SELECT ChangeEventId, AgentId, CapabilityKey, ChangeKind, CollectedUtc, PreviousCollectedUtc, Summary, HighlightsJson
+                  FROM CapabilityChangeEvents
+                  WHERE AgentId = $agentId
+                  ORDER BY CollectedUtc DESC
+                  LIMIT $take;
+                  """;
+        command.Parameters.AddWithValue("$take", take);
+        if (agentId is not null)
+        {
+            command.Parameters.AddWithValue("$agentId", agentId.Value.ToString("D"));
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            changes.Add(new CapabilityChangeEventDto(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                reader.GetString(2),
+                reader.GetString(3),
+                FromDb(reader.GetString(4)),
+                reader.IsDBNull(5) ? null : FromDb(reader.GetString(5)),
+                reader.GetString(6),
+                JsonSerializer.Deserialize<List<string>>(reader.GetString(7), JsonOptions) ?? []));
+        }
+
+        return changes;
+    }
+
     private async Task<IReadOnlyList<ActionCommandSummaryDto>> GetRecentActionsAsync(
         SqliteConnection connection,
         Guid agentId,
@@ -1033,7 +1361,7 @@ public sealed class SqliteCentralStore : ICentralStore
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, Status, RequestedBy, CreatedUtc, LeasedUtc, LeaseExpiresUtc, CompletedUtc, ResultMessage, ErrorMessage
+            SELECT ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, Status, RequestedBy, CreatedUtc, LeasedUtc, LeaseExpiresUtc, CompletedUtc, AttemptCount, ResultMessage, ErrorMessage
             FROM ActionCommands
             WHERE AgentId = $agentId
             ORDER BY CreatedUtc DESC
@@ -1056,11 +1384,50 @@ public sealed class SqliteCentralStore : ICentralStore
                 reader.IsDBNull(8) ? null : FromDb(reader.GetString(8)),
                 reader.IsDBNull(9) ? null : FromDb(reader.GetString(9)),
                 reader.IsDBNull(10) ? null : FromDb(reader.GetString(10)),
-                reader.IsDBNull(11) ? null : reader.GetString(11),
-                reader.IsDBNull(12) ? null : reader.GetString(12)));
+                reader.IsDBNull(11) ? 0 : Convert.ToInt32(reader.GetValue(11)),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13)));
         }
 
         return actions;
+    }
+
+    private async Task<ActionCommandSummaryDto?> GetActionSummaryByIdAsync(
+        SqliteConnection connection,
+        Guid actionId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT ActionId, AgentId, CapabilityKey, ActionKey, TargetKey, Status, RequestedBy, CreatedUtc, LeasedUtc, LeaseExpiresUtc, CompletedUtc, AttemptCount, ResultMessage, ErrorMessage
+            FROM ActionCommands
+            WHERE ActionId = $actionId
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$actionId", actionId.ToString("D"));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ActionCommandSummaryDto(
+            Guid.Parse(reader.GetString(0)),
+            Guid.Parse(reader.GetString(1)),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.GetString(5),
+            reader.GetString(6),
+            FromDb(reader.GetString(7)),
+            reader.IsDBNull(8) ? null : FromDb(reader.GetString(8)),
+            reader.IsDBNull(9) ? null : FromDb(reader.GetString(9)),
+            reader.IsDBNull(10) ? null : FromDb(reader.GetString(10)),
+            reader.IsDBNull(11) ? 0 : Convert.ToInt32(reader.GetValue(11)),
+            reader.IsDBNull(12) ? null : reader.GetString(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13));
     }
 
     private static StoredAgent ReadStoredAgent(SqliteDataReader reader)
@@ -1097,6 +1464,30 @@ public sealed class SqliteCentralStore : ICentralStore
         return connection;
     }
 
+    private static async Task EnsureColumnAsync(
+        SqliteConnection connection,
+        string tableName,
+        string columnName,
+        string definition,
+        CancellationToken cancellationToken)
+    {
+        await using var inspectCommand = connection.CreateCommand();
+        inspectCommand.CommandText = $"PRAGMA table_info({tableName});";
+
+        await using var reader = await inspectCommand.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        await using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {definition};";
+        await alterCommand.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static string ToDb(DateTimeOffset value) => value.ToString("O");
 
     private static DateTimeOffset FromDb(string value) => DateTimeOffset.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
@@ -1107,6 +1498,7 @@ public sealed class SqliteCentralStore : ICentralStore
         int FailedCount);
 
     private sealed record CapabilitySnapshotEnvelope(
+        Guid SnapshotId,
         DateTimeOffset CollectedUtc,
         string Hash,
         string PayloadJson);

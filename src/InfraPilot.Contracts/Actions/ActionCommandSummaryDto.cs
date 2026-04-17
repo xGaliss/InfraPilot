@@ -12,5 +12,6 @@ public sealed record ActionCommandSummaryDto(
     DateTimeOffset? LeasedUtc,
     DateTimeOffset? LeaseExpiresUtc,
     DateTimeOffset? CompletedUtc,
+    int AttemptCount,
     string? ResultMessage,
     string? ErrorMessage);
