@@ -19,6 +19,16 @@ else
     var sites = Model.IisSnapshot.Sites ?? [];
     var users = Model.UsersAndGroupsSnapshot.Users ?? [];
     var groups = Model.UsersAndGroupsSnapshot.Groups ?? [];
+    var serviceState = Model.Agent.Capabilities.FirstOrDefault(x => x.Descriptor.CapabilityKey == CapabilityKeys.Services);
+    var scheduledTaskState = Model.Agent.Capabilities.FirstOrDefault(x => x.Descriptor.CapabilityKey == CapabilityKeys.ScheduledTasks);
+    var iisState = Model.Agent.Capabilities.FirstOrDefault(x => x.Descriptor.CapabilityKey == CapabilityKeys.Iis);
+    var fileTreeState = Model.Agent.Capabilities.FirstOrDefault(x => x.Descriptor.CapabilityKey == CapabilityKeys.FileTree);
+    var usersAndGroupsState = Model.Agent.Capabilities.FirstOrDefault(x => x.Descriptor.CapabilityKey == CapabilityKeys.UsersAndGroups);
+    var changedCapabilities = Model.Agent.Capabilities
+        .Where(x => x.ChangeSummary.HasPreviousSnapshot)
+        .OrderByDescending(x => x.ChangeSummary.HasChanges)
+        .ThenBy(x => x.Descriptor.DisplayName)
+        .ToList();
     var hasServices = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.Services);
     var hasScheduledTasks = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.ScheduledTasks);
     var hasIis = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.Iis);
@@ -86,37 +96,47 @@ else
             <div class="section-heading">
                 <div>
                     <p class="eyebrow">Agent Workspace</p>
-                    <h2>Inspect and operate without a long page scroll</h2>
+                    <h2>Inspect and operate from a focused workspace</h2>
                 </div>
             </div>
 
-            <ul class="nav nav-pills agent-tabs" id="agent-detail-tabs" role="tablist">
-                <li class="nav-item"><button class="nav-link agent-tab-button active" id="tab-overview-tab" data-bs-toggle="pill" data-bs-target="#tab-overview" type="button">Overview</button></li>
-                @if (hasServices)
-                {
-                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-services-tab" data-bs-toggle="pill" data-bs-target="#tab-services" type="button">Services <span class="tab-count">@services.Count</span></button></li>
-                }
-                @if (hasScheduledTasks)
-                {
-                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-tasks-tab" data-bs-toggle="pill" data-bs-target="#tab-tasks" type="button">Tasks <span class="tab-count">@scheduledTasks.Count</span></button></li>
-                }
-                @if (hasIis)
-                {
-                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-iis-tab" data-bs-toggle="pill" data-bs-target="#tab-iis" type="button">IIS <span class="tab-count">@(@sites.Count + @appPools.Count)</span></button></li>
-                }
-                @if (hasFileTree)
-                {
-                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-filetree-tab" data-bs-toggle="pill" data-bs-target="#tab-filetree" type="button">File Tree <span class="tab-count">@Model.FileTreeSnapshot.Roots.Count</span></button></li>
-                }
-                @if (hasUsersAndGroups)
-                {
-                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-usersgroups-tab" data-bs-toggle="pill" data-bs-target="#tab-usersgroups" type="button">Users &amp; Groups <span class="tab-count">@(users.Count + groups.Count)</span></button></li>
-                }
-                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-actions-tab" data-bs-toggle="pill" data-bs-target="#tab-actions" type="button">Actions <span class="tab-count">@Model.Agent.RecentActions.Count</span></button></li>
-            </ul>
+            <div class="agent-workspace-grid">
+                <aside class="agent-context-nav-shell">
+                    <div class="agent-context-nav-sticky">
+                        <div class="agent-context-nav-head">
+                            <p class="eyebrow">Sections</p>
+                            <h3>Workspace Menu</h3>
+                        </div>
 
-            <div class="tab-content tab-content-shell">
-                <div class="tab-pane fade show active" id="tab-overview">
+                        <ul class="nav nav-pills agent-context-nav" id="agent-detail-tabs" role="tablist">
+                            <li class="nav-item"><button class="nav-link agent-tab-button active" id="tab-overview-tab" data-bs-toggle="pill" data-bs-target="#tab-overview" type="button"><span>Overview</span></button></li>
+                            @if (hasServices)
+                            {
+                                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-services-tab" data-bs-toggle="pill" data-bs-target="#tab-services" type="button"><span>Services</span><span class="tab-count">@services.Count</span></button></li>
+                            }
+                            @if (hasScheduledTasks)
+                            {
+                                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-tasks-tab" data-bs-toggle="pill" data-bs-target="#tab-tasks" type="button"><span>Tasks</span><span class="tab-count">@scheduledTasks.Count</span></button></li>
+                            }
+                            @if (hasIis)
+                            {
+                                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-iis-tab" data-bs-toggle="pill" data-bs-target="#tab-iis" type="button"><span>IIS</span><span class="tab-count">@(@sites.Count + @appPools.Count)</span></button></li>
+                            }
+                            @if (hasFileTree)
+                            {
+                                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-filetree-tab" data-bs-toggle="pill" data-bs-target="#tab-filetree" type="button"><span>File Tree</span><span class="tab-count">@Model.FileTreeSnapshot.Roots.Count</span></button></li>
+                            }
+                            @if (hasUsersAndGroups)
+                            {
+                                <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-usersgroups-tab" data-bs-toggle="pill" data-bs-target="#tab-usersgroups" type="button"><span>Users &amp; Groups</span><span class="tab-count">@(users.Count + groups.Count)</span></button></li>
+                            }
+                            <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-actions-tab" data-bs-toggle="pill" data-bs-target="#tab-actions" type="button"><span>Actions</span><span class="tab-count">@Model.Agent.RecentActions.Count</span></button></li>
+                        </ul>
+                    </div>
+                </aside>
+
+                <div class="tab-content tab-content-shell">
+                    <div class="tab-pane fade show active" id="tab-overview">
                     <article class="capability-card polished">
                         <div class="overview-grid">
                             @if (hasServices)
@@ -142,6 +162,44 @@ else
                         </div>
 
                         <div class="tab-panel-body">
+                            <section class="change-summary-shell">
+                                <div class="section-heading compact-heading">
+                                    <div>
+                                        <p class="eyebrow">Snapshot Changes</p>
+                                        <h2>What changed since the last capture</h2>
+                                    </div>
+                                </div>
+
+                                @if (changedCapabilities.Count == 0)
+                                {
+                                    <p class="empty-state">No capability has two snapshots yet, so there is nothing to compare.</p>
+                                }
+                                else
+                                {
+                                    <div class="change-summary-grid">
+                                        @foreach (var capability in changedCapabilities)
+                                        {
+                                            <section class="change-card @(capability.ChangeSummary.HasChanges ? "change-card-hot" : string.Empty)">
+                                                <div class="overview-card-head">
+                                                    <h3>@capability.Descriptor.DisplayName</h3>
+                                                    <span class="timestamp-chip">@(capability.ChangeSummary.PreviousCollectedUtc?.ToLocalTime().ToString("g") ?? "-")</span>
+                                                </div>
+                                                <p class="capability-preview">@capability.ChangeSummary.Summary</p>
+                                                @if (capability.ChangeSummary.Highlights.Count > 0)
+                                                {
+                                                    <div class="change-highlight-list">
+                                                        @foreach (var highlight in capability.ChangeSummary.Highlights)
+                                                        {
+                                                            <span class="change-highlight-chip">@highlight</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </section>
+                                        }
+                                    </div>
+                                }
+                            </section>
+
                             <div class="section-heading compact-heading">
                                 <div>
                                     <p class="eyebrow">Recent Activity</p>
@@ -175,121 +233,142 @@ else
                             </div>
                         </div>
                     </article>
-                </div>
-
-                @if (hasServices)
-                {
-                    <div class="tab-pane fade" id="tab-services">
-                        <article class="capability-card polished">
-                            <header class="capability-header">
-                                <div>
-                                    <h3>Windows Services</h3>
-                                    <p>Operate the services currently visible through this agent filter.</p>
-                                </div>
-                                <span class="timestamp-chip">@services.Count services</span>
-                            </header>
-                            <div class="tab-panel-body">
-                                @if (services.Count == 0)
-                                {
-                                    <p class="empty-state">No services matched the current filter.</p>
-                                }
-                                else
-                                {
-                                    <div class="data-table-wrap">
-                                        <table class="table data-table">
-                                            <thead><tr><th>Service</th><th>Status</th><th>Type</th><th>Actions</th></tr></thead>
-                                            <tbody>
-                                            @foreach (var service in services.Take(80))
-                                            {
-                                                <tr>
-                                                    <td><div class="primary-cell">@service.DisplayName</div><div class="muted">@service.ServiceName</div></td>
-                                                    <td><span class="state-pill">@service.Status</span></td>
-                                                    <td>@service.ServiceType</td>
-                                                    <td>
-                                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
-                                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
-                                                            <input type="hidden" name="capabilityKey" value="services" />
-                                                            <input type="hidden" name="targetKey" value="@service.ServiceName" />
-                                                            <input type="hidden" name="activeTab" value="tab-services" />
-                                                            <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="start">Start</button>
-                                                            <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="stop">Stop</button>
-                                                            <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="restart">Restart</button>
-                                                        </form>
-                                                    </td>
-                                                </tr>
-                                            }
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }
-                            </div>
-                        </article>
                     </div>
-                }
 
-                @if (hasScheduledTasks)
-                {
-                    <div class="tab-pane fade" id="tab-tasks">
-                        <article class="capability-card polished">
-                            <header class="capability-header">
-                                <div>
-                                    <h3>Scheduled Tasks</h3>
-                                    <p>Run filtered tasks on demand from a dedicated workspace.</p>
-                                </div>
-                                <span class="timestamp-chip">@scheduledTasks.Count tasks</span>
-                            </header>
-                            <div class="tab-panel-body">
-                                @if (scheduledTasks.Count == 0)
-                                {
-                                    <p class="empty-state">No scheduled tasks matched the current filter.</p>
-                                }
-                                else
-                                {
-                                    <div class="data-table-wrap">
-                                        <table class="table data-table">
-                                            <thead><tr><th>Task</th><th>Status</th><th>Run as</th><th>Command</th><th>Action</th></tr></thead>
-                                            <tbody>
-                                            @foreach (var task in scheduledTasks.Take(80))
-                                            {
-                                                var fullTaskName = $"{task.TaskPath}{task.TaskName}";
-                                                <tr>
-                                                    <td><div class="primary-cell">@task.TaskName</div><div class="muted">@task.TaskPath</div></td>
-                                                    <td><span class="state-pill">@task.Status</span></td>
-                                                    <td>@(task.RunAsUser ?? "-")</td>
-                                                    <td class="truncate-cell">@(task.TaskToRun ?? "-")</td>
-                                                    <td>
-                                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
-                                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
-                                                            <input type="hidden" name="capabilityKey" value="scheduledTasks" />
-                                                            <input type="hidden" name="targetKey" value="@fullTaskName" />
-                                                            <input type="hidden" name="activeTab" value="tab-tasks" />
-                                                            <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="run">Run</button>
-                                                        </form>
-                                                    </td>
-                                                </tr>
-                                            }
-                                            </tbody>
-                                        </table>
+                    @if (hasServices)
+                    {
+                        <div class="tab-pane fade" id="tab-services">
+                            <article class="capability-card polished">
+                                <header class="capability-header">
+                                    <div>
+                                        <h3>Windows Services</h3>
+                                        <p>Operate the services currently visible through this agent filter.</p>
                                     </div>
-                                }
-                            </div>
-                        </article>
-                    </div>
-                }
-
-                @if (hasIis)
-                {
-                    <div class="tab-pane fade" id="tab-iis">
-                        <article class="capability-card polished">
-                            <header class="capability-header">
-                                <div>
-                                    <h3>IIS</h3>
-                                    <p>Sites and app pools grouped together in one focused area.</p>
+                                    <span class="timestamp-chip">@services.Count services</span>
+                                </header>
+                                <div class="tab-panel-body">
+                                    @if (serviceState is not null)
+                                    {
+                                        <section class="inline-change-summary">
+                                            <p class="inline-change-title">Changes since previous snapshot</p>
+                                            <p class="capability-preview">@serviceState.ChangeSummary.Summary</p>
+                                        </section>
+                                    }
+                                    @if (services.Count == 0)
+                                    {
+                                        <p class="empty-state">No services matched the current filter.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="data-table-wrap">
+                                            <table class="table data-table">
+                                                <thead><tr><th>Service</th><th>Status</th><th>Type</th><th>Actions</th></tr></thead>
+                                                <tbody>
+                                                @foreach (var service in services.Take(80))
+                                                {
+                                                    <tr>
+                                                        <td><div class="primary-cell">@service.DisplayName</div><div class="muted">@service.ServiceName</div></td>
+                                                        <td><span class="state-pill">@service.Status</span></td>
+                                                        <td>@service.ServiceType</td>
+                                                        <td>
+                                                            <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                                <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                                <input type="hidden" name="capabilityKey" value="services" />
+                                                                <input type="hidden" name="targetKey" value="@service.ServiceName" />
+                                                                <input type="hidden" name="activeTab" value="tab-services" />
+                                                                <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="start">Start</button>
+                                                                <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="stop">Stop</button>
+                                                                <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="restart">Restart</button>
+                                                            </form>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
                                 </div>
-                                <span class="timestamp-chip">@sites.Count sites · @appPools.Count pools</span>
-                            </header>
-                            <div class="tab-panel-body">
-                                <div class="split-grid">
+                            </article>
+                        </div>
+                    }
+
+                    @if (hasScheduledTasks)
+                    {
+                        <div class="tab-pane fade" id="tab-tasks">
+                            <article class="capability-card polished">
+                                <header class="capability-header">
+                                    <div>
+                                        <h3>Scheduled Tasks</h3>
+                                        <p>Run filtered tasks on demand from a dedicated workspace.</p>
+                                    </div>
+                                    <span class="timestamp-chip">@scheduledTasks.Count tasks</span>
+                                </header>
+                                <div class="tab-panel-body">
+                                    @if (scheduledTaskState is not null)
+                                    {
+                                        <section class="inline-change-summary">
+                                            <p class="inline-change-title">Changes since previous snapshot</p>
+                                            <p class="capability-preview">@scheduledTaskState.ChangeSummary.Summary</p>
+                                        </section>
+                                    }
+                                    @if (scheduledTasks.Count == 0)
+                                    {
+                                        <p class="empty-state">No scheduled tasks matched the current filter.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="data-table-wrap">
+                                            <table class="table data-table">
+                                                <thead><tr><th>Task</th><th>Status</th><th>Run as</th><th>Command</th><th>Action</th></tr></thead>
+                                                <tbody>
+                                                @foreach (var task in scheduledTasks.Take(80))
+                                                {
+                                                    var fullTaskName = $"{task.TaskPath}{task.TaskName}";
+                                                    <tr>
+                                                        <td><div class="primary-cell">@task.TaskName</div><div class="muted">@task.TaskPath</div></td>
+                                                        <td><span class="state-pill">@task.Status</span></td>
+                                                        <td>@(task.RunAsUser ?? "-")</td>
+                                                        <td class="truncate-cell">@(task.TaskToRun ?? "-")</td>
+                                                        <td>
+                                                            <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                                <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                                <input type="hidden" name="capabilityKey" value="scheduledTasks" />
+                                                                <input type="hidden" name="targetKey" value="@fullTaskName" />
+                                                                <input type="hidden" name="activeTab" value="tab-tasks" />
+                                                                <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="run">Run</button>
+                                                            </form>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+                        </div>
+                    }
+
+                    @if (hasIis)
+                    {
+                        <div class="tab-pane fade" id="tab-iis">
+                            <article class="capability-card polished">
+                                <header class="capability-header">
+                                    <div>
+                                        <h3>IIS</h3>
+                                        <p>Sites and app pools grouped together in one focused area.</p>
+                                    </div>
+                                    <span class="timestamp-chip">@sites.Count sites · @appPools.Count pools</span>
+                                </header>
+                                <div class="tab-panel-body">
+                                    @if (iisState is not null)
+                                    {
+                                        <section class="inline-change-summary">
+                                            <p class="inline-change-title">Changes since previous snapshot</p>
+                                            <p class="capability-preview">@iisState.ChangeSummary.Summary</p>
+                                        </section>
+                                    }
+                                    <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>App Pools</h4><span>@appPools.Count total</span></div>
                                         @if (appPools.Count == 0)
@@ -361,89 +440,103 @@ else
                                             </div>
                                         }
                                     </section>
-                                </div>
-                            </div>
-                        </article>
-                    </div>
-                }
-
-                @if (hasFileTree)
-                {
-                    <div class="tab-pane fade" id="tab-filetree">
-                        <article class="capability-card polished">
-                            <header class="capability-header">
-                                <div>
-                                    <h3>File Tree</h3>
-                                    <p>Browse configured roots in a dedicated pane.</p>
-                                </div>
-                                <span class="timestamp-chip">@Model.FileTreeSnapshot.Roots.Count roots</span>
-                            </header>
-                            <div class="tab-panel-body">
-                                @if (Model.FileTreeSnapshot.Roots.Count == 0)
-                                {
-                                    <p class="empty-state">No file tree roots are configured or reachable on this agent.</p>
-                                }
-                                else
-                                {
-                                    <div class="tree-grid">
-                                        @foreach (var root in Model.FileTreeSnapshot.Roots)
-                                        {
-                                            var rows = Model.BuildFileTreeRows(root.Nodes);
-                                            <section class="nested-panel">
-                                                <div class="panel-heading"><h4>@root.RootPath</h4><span>@rows.Count entries</span></div>
-                                                @if (!string.IsNullOrWhiteSpace(root.Owner) || root.Permissions.Count > 0)
-                                                {
-                                                    <details class="tree-security-panel root-security-block">
-                                                        <summary class="tree-security-summary">Root security</summary>
-                                                        <div class="tree-security-body">
-                                                            @if (!string.IsNullOrWhiteSpace(root.Owner))
-                                                            {
-                                                                <span class="tree-security-line">Owner: @root.Owner</span>
-                                                            }
-                                                            @if (root.Permissions.Count > 0)
-                                                            {
-                                                                <div class="tree-security-chips">
-                                                                    @foreach (var permission in root.Permissions)
-                                                                    {
-                                                                        <span class="security-chip">@permission</span>
-                                                                    }
-                                                                </div>
-                                                            }
-                                                        </div>
-                                                    </details>
-                                                }
-                                                @if (rows.Count == 0)
-                                                {
-                                                    <p class="empty-state">This root is empty or the configured depth reached no visible items.</p>
-                                                }
-                                                else
-                                                {
-                                                    <div class="tree-browser">
-                                                        <partial name="_FileTreeNodes" model="root.Nodes" />
-                                                    </div>
-                                                }
-                                            </section>
-                                        }
                                     </div>
-                                }
-                            </div>
-                        </article>
-                    </div>
-                }
-
-                @if (hasUsersAndGroups)
-                {
-                    <div class="tab-pane fade" id="tab-usersgroups">
-                        <article class="capability-card polished">
-                            <header class="capability-header">
-                                <div>
-                                    <h3>Users &amp; Groups</h3>
-                                    <p>Inspect local server identities and the members attached to each group.</p>
                                 </div>
-                                <span class="timestamp-chip">@users.Count users · @groups.Count groups</span>
-                            </header>
-                            <div class="tab-panel-body">
-                                <div class="split-grid">
+                            </article>
+                        </div>
+                    }
+
+                    @if (hasFileTree)
+                    {
+                        <div class="tab-pane fade" id="tab-filetree">
+                            <article class="capability-card polished">
+                                <header class="capability-header">
+                                    <div>
+                                        <h3>File Tree</h3>
+                                        <p>Browse configured roots in a dedicated pane.</p>
+                                    </div>
+                                    <span class="timestamp-chip">@Model.FileTreeSnapshot.Roots.Count roots</span>
+                                </header>
+                                <div class="tab-panel-body">
+                                    @if (fileTreeState is not null)
+                                    {
+                                        <section class="inline-change-summary">
+                                            <p class="inline-change-title">Changes since previous snapshot</p>
+                                            <p class="capability-preview">@fileTreeState.ChangeSummary.Summary</p>
+                                        </section>
+                                    }
+                                    @if (Model.FileTreeSnapshot.Roots.Count == 0)
+                                    {
+                                        <p class="empty-state">No file tree roots are configured or reachable on this agent.</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="tree-grid">
+                                            @foreach (var root in Model.FileTreeSnapshot.Roots)
+                                            {
+                                                var rows = Model.BuildFileTreeRows(root.Nodes);
+                                                <section class="nested-panel">
+                                                    <div class="panel-heading"><h4>@root.RootPath</h4><span>@rows.Count entries</span></div>
+                                                    @if (!string.IsNullOrWhiteSpace(root.Owner) || root.Permissions.Count > 0)
+                                                    {
+                                                        <details class="tree-security-panel root-security-block">
+                                                            <summary class="tree-security-summary">Root security</summary>
+                                                            <div class="tree-security-body">
+                                                                @if (!string.IsNullOrWhiteSpace(root.Owner))
+                                                                {
+                                                                    <span class="tree-security-line">Owner: @root.Owner</span>
+                                                                }
+                                                                @if (root.Permissions.Count > 0)
+                                                                {
+                                                                    <div class="tree-security-chips">
+                                                                        @foreach (var permission in root.Permissions)
+                                                                        {
+                                                                            <span class="security-chip">@permission</span>
+                                                                        }
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        </details>
+                                                    }
+                                                    @if (rows.Count == 0)
+                                                    {
+                                                        <p class="empty-state">This root is empty or the configured depth reached no visible items.</p>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="tree-browser">
+                                                            <partial name="_FileTreeNodes" model="root.Nodes" />
+                                                        </div>
+                                                    }
+                                                </section>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+                        </div>
+                    }
+
+                    @if (hasUsersAndGroups)
+                    {
+                        <div class="tab-pane fade" id="tab-usersgroups">
+                            <article class="capability-card polished">
+                                <header class="capability-header">
+                                    <div>
+                                        <h3>Users &amp; Groups</h3>
+                                        <p>Inspect local server identities and the members attached to each group.</p>
+                                    </div>
+                                    <span class="timestamp-chip">@users.Count users · @groups.Count groups</span>
+                                </header>
+                                <div class="tab-panel-body">
+                                    @if (usersAndGroupsState is not null)
+                                    {
+                                        <section class="inline-change-summary">
+                                            <p class="inline-change-title">Changes since previous snapshot</p>
+                                            <p class="capability-preview">@usersAndGroupsState.ChangeSummary.Summary</p>
+                                        </section>
+                                    }
+                                    <div class="split-grid">
                                     <section class="nested-panel">
                                         <div class="panel-heading"><h4>Local Users</h4><span>@users.Count total</span></div>
                                         @if (users.Count == 0)
@@ -520,49 +613,50 @@ else
                                             </div>
                                         }
                                     </section>
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+                    }
+
+                    <div class="tab-pane fade" id="tab-actions">
+                        <article class="capability-card polished">
+                            <header class="capability-header">
+                                <div>
+                                    <h3>Recent Activity</h3>
+                                    <p>Execution history for the latest actions sent to this agent.</p>
+                                </div>
+                                <span class="timestamp-chip">@Model.Agent.RecentActions.Count entries</span>
+                            </header>
+                            <div class="tab-panel-body">
+                                <div class="data-table-wrap">
+                                    <table class="table data-table">
+                                        <thead><tr><th>When</th><th>Capability</th><th>Action</th><th>Target</th><th>Status</th><th>Result</th></tr></thead>
+                                        <tbody>
+                                        @if (Model.Agent.RecentActions.Count == 0)
+                                        {
+                                            <tr><td colspan="6" class="empty-cell">No actions have been recorded yet.</td></tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var action in Model.Agent.RecentActions)
+                                            {
+                                                <tr>
+                                                    <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
+                                                    <td>@action.CapabilityKey</td>
+                                                    <td>@action.ActionKey</td>
+                                                    <td>@(action.TargetKey ?? "-")</td>
+                                                    <td><span class="state-pill">@action.Status</span></td>
+                                                    <td>@(action.ResultMessage ?? action.ErrorMessage ?? "-")</td>
+                                                </tr>
+                                            }
+                                        }
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </article>
                     </div>
-                }
-
-                <div class="tab-pane fade" id="tab-actions">
-                    <article class="capability-card polished">
-                        <header class="capability-header">
-                            <div>
-                                <h3>Recent Activity</h3>
-                                <p>Execution history for the latest actions sent to this agent.</p>
-                            </div>
-                            <span class="timestamp-chip">@Model.Agent.RecentActions.Count entries</span>
-                        </header>
-                        <div class="tab-panel-body">
-                            <div class="data-table-wrap">
-                                <table class="table data-table">
-                                    <thead><tr><th>When</th><th>Capability</th><th>Action</th><th>Target</th><th>Status</th><th>Result</th></tr></thead>
-                                    <tbody>
-                                    @if (Model.Agent.RecentActions.Count == 0)
-                                    {
-                                        <tr><td colspan="6" class="empty-cell">No actions have been recorded yet.</td></tr>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var action in Model.Agent.RecentActions)
-                                        {
-                                            <tr>
-                                                <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
-                                                <td>@action.CapabilityKey</td>
-                                                <td>@action.ActionKey</td>
-                                                <td>@(action.TargetKey ?? "-")</td>
-                                                <td><span class="state-pill">@action.Status</span></td>
-                                                <td>@(action.ResultMessage ?? action.ErrorMessage ?? "-")</td>
-                                            </tr>
-                                        }
-                                    }
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </article>
                 </div>
             </div>
         </section>

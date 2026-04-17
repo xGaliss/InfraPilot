@@ -4,4 +4,5 @@ public sealed record AgentCapabilityStateDto(
     CapabilityDescriptorDto Descriptor,
     DateTimeOffset? LastCollectedUtc,
     string? LatestPayloadJson,
-    string? LatestHash);
+    string? LatestHash,
+    CapabilityChangeSummaryDto ChangeSummary);

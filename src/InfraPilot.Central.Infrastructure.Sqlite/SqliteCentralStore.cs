@@ -6,6 +6,11 @@ using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
 using InfraPilot.Contracts.Common;
+using InfraPilot.Contracts.FileTree;
+using InfraPilot.Contracts.Iis;
+using InfraPilot.Contracts.ScheduledTasks;
+using InfraPilot.Contracts.Services;
+using InfraPilot.Contracts.UsersAndGroups;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 
@@ -682,6 +687,7 @@ public sealed class SqliteCentralStore : ICentralStore
         CancellationToken cancellationToken)
     {
         var capabilities = new List<AgentCapabilityStateDto>();
+        var recentSnapshots = await GetRecentCapabilitySnapshotsAsync(connection, agentId, cancellationToken);
 
         await using var command = connection.CreateCommand();
         command.CommandText =
@@ -690,20 +696,8 @@ public sealed class SqliteCentralStore : ICentralStore
                 c.CapabilityKey,
                 c.DisplayName,
                 c.Version,
-                c.ActionsJson,
-                s.CollectedUtc,
-                s.PayloadJson,
-                s.Hash
+                c.ActionsJson
             FROM AgentCapabilities c
-            LEFT JOIN CapabilitySnapshots s
-                ON s.AgentId = c.AgentId
-               AND s.CapabilityKey = c.CapabilityKey
-               AND s.CollectedUtc = (
-                    SELECT MAX(CollectedUtc)
-                    FROM CapabilitySnapshots
-                    WHERE AgentId = c.AgentId
-                      AND CapabilityKey = c.CapabilityKey
-               )
             WHERE c.AgentId = $agentId
             ORDER BY c.CapabilityKey;
             """;
@@ -713,15 +707,322 @@ public sealed class SqliteCentralStore : ICentralStore
         while (await reader.ReadAsync(cancellationToken))
         {
             var actions = JsonSerializer.Deserialize<List<CapabilityActionDefinitionDto>>(reader.GetString(3), JsonOptions) ?? [];
+            recentSnapshots.TryGetValue(reader.GetString(0), out var snapshotPair);
+            var latestSnapshot = snapshotPair is not null && snapshotPair.Count > 0 ? snapshotPair[0] : null;
+            var previousSnapshot = snapshotPair is not null && snapshotPair.Count > 1 ? snapshotPair[1] : null;
+
             capabilities.Add(new AgentCapabilityStateDto(
                 new CapabilityDescriptorDto(reader.GetString(0), reader.GetString(1), reader.GetString(2), actions),
-                reader.IsDBNull(4) ? null : FromDb(reader.GetString(4)),
-                reader.IsDBNull(5) ? null : reader.GetString(5),
-                reader.IsDBNull(6) ? null : reader.GetString(6)));
+                latestSnapshot?.CollectedUtc,
+                latestSnapshot?.PayloadJson,
+                latestSnapshot?.Hash,
+                BuildChangeSummary(reader.GetString(0), latestSnapshot, previousSnapshot)));
         }
 
         return capabilities;
     }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<CapabilitySnapshotEnvelope>>> GetRecentCapabilitySnapshotsAsync(
+        SqliteConnection connection,
+        Guid agentId,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, List<CapabilitySnapshotEnvelope>>(StringComparer.OrdinalIgnoreCase);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT CapabilityKey, CollectedUtc, Hash, PayloadJson
+            FROM CapabilitySnapshots
+            WHERE AgentId = $agentId
+            ORDER BY CapabilityKey, CollectedUtc DESC;
+            """;
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var capabilityKey = reader.GetString(0);
+            if (!result.TryGetValue(capabilityKey, out var snapshots))
+            {
+                snapshots = [];
+                result[capabilityKey] = snapshots;
+            }
+
+            if (snapshots.Count >= 2)
+            {
+                continue;
+            }
+
+            snapshots.Add(new CapabilitySnapshotEnvelope(
+                FromDb(reader.GetString(1)),
+                reader.GetString(2),
+                reader.GetString(3)));
+        }
+
+        return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<CapabilitySnapshotEnvelope>)pair.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static CapabilityChangeSummaryDto BuildChangeSummary(
+        string capabilityKey,
+        CapabilitySnapshotEnvelope? latestSnapshot,
+        CapabilitySnapshotEnvelope? previousSnapshot)
+    {
+        if (latestSnapshot is null)
+        {
+            return new CapabilityChangeSummaryDto(false, false, null, "No snapshot captured yet.", []);
+        }
+
+        if (previousSnapshot is null)
+        {
+            return new CapabilityChangeSummaryDto(false, false, null, "First snapshot captured for this capability.", []);
+        }
+
+        if (string.Equals(latestSnapshot.Hash, previousSnapshot.Hash, StringComparison.Ordinal))
+        {
+            return new CapabilityChangeSummaryDto(true, false, previousSnapshot.CollectedUtc, "No changes since the previous snapshot.", []);
+        }
+
+        return capabilityKey switch
+        {
+            CapabilityKeys.Services => BuildServicesChangeSummary(latestSnapshot, previousSnapshot),
+            CapabilityKeys.ScheduledTasks => BuildScheduledTasksChangeSummary(latestSnapshot, previousSnapshot),
+            CapabilityKeys.Iis => BuildIisChangeSummary(latestSnapshot, previousSnapshot),
+            CapabilityKeys.FileTree => BuildFileTreeChangeSummary(latestSnapshot, previousSnapshot),
+            CapabilityKeys.UsersAndGroups => BuildUsersAndGroupsChangeSummary(latestSnapshot, previousSnapshot),
+            _ => new CapabilityChangeSummaryDto(true, true, previousSnapshot.CollectedUtc, "Snapshot content changed.", [])
+        };
+    }
+
+    private static CapabilityChangeSummaryDto BuildServicesChangeSummary(
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope previousSnapshot)
+    {
+        var latest = JsonSerializer.Deserialize<ServiceSnapshotDto>(latestSnapshot.PayloadJson, JsonOptions) ?? new ServiceSnapshotDto();
+        var previous = JsonSerializer.Deserialize<ServiceSnapshotDto>(previousSnapshot.PayloadJson, JsonOptions) ?? new ServiceSnapshotDto();
+
+        var latestMap = latest.Services.ToDictionary(service => service.ServiceName, StringComparer.OrdinalIgnoreCase);
+        var previousMap = previous.Services.ToDictionary(service => service.ServiceName, StringComparer.OrdinalIgnoreCase);
+
+        var added = latestMap.Keys.Except(previousMap.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removed = previousMap.Keys.Except(latestMap.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var statusChanged = latestMap.Keys.Intersect(previousMap.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key => !string.Equals(latestMap[key].Status, previousMap[key].Status, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(key => key)
+            .ToList();
+
+        var highlights = BuildHighlights(
+            added, "Added service",
+            removed, "Removed service",
+            statusChanged.Select(key => $"{key}: {previousMap[key].Status} -> {latestMap[key].Status}").ToList(), "State changed");
+
+        var summary = $"{added.Count} added, {removed.Count} removed, {statusChanged.Count} state changes.";
+        return new CapabilityChangeSummaryDto(true, added.Count + removed.Count + statusChanged.Count > 0, previousSnapshot.CollectedUtc, summary, highlights);
+    }
+
+    private static CapabilityChangeSummaryDto BuildScheduledTasksChangeSummary(
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope previousSnapshot)
+    {
+        var latest = JsonSerializer.Deserialize<ScheduledTaskSnapshotDto>(latestSnapshot.PayloadJson, JsonOptions) ?? new ScheduledTaskSnapshotDto();
+        var previous = JsonSerializer.Deserialize<ScheduledTaskSnapshotDto>(previousSnapshot.PayloadJson, JsonOptions) ?? new ScheduledTaskSnapshotDto();
+
+        var latestMap = latest.Tasks.ToDictionary(task => $"{task.TaskPath}{task.TaskName}", StringComparer.OrdinalIgnoreCase);
+        var previousMap = previous.Tasks.ToDictionary(task => $"{task.TaskPath}{task.TaskName}", StringComparer.OrdinalIgnoreCase);
+
+        var added = latestMap.Keys.Except(previousMap.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removed = previousMap.Keys.Except(latestMap.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changed = latestMap.Keys.Intersect(previousMap.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key =>
+                !string.Equals(latestMap[key].Status, previousMap[key].Status, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(latestMap[key].TaskToRun, previousMap[key].TaskToRun, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(key => key)
+            .ToList();
+
+        var changedDetails = changed.Select(key =>
+        {
+            var previousStatus = previousMap[key].Status;
+            var latestStatus = latestMap[key].Status;
+            return string.Equals(previousStatus, latestStatus, StringComparison.OrdinalIgnoreCase)
+                ? key
+                : $"{key}: {previousStatus} -> {latestStatus}";
+        }).ToList();
+
+        var highlights = BuildHighlights(
+            added, "Added task",
+            removed, "Removed task",
+            changedDetails, "Changed task");
+
+        var summary = $"{added.Count} added, {removed.Count} removed, {changed.Count} changed.";
+        return new CapabilityChangeSummaryDto(true, added.Count + removed.Count + changed.Count > 0, previousSnapshot.CollectedUtc, summary, highlights);
+    }
+
+    private static CapabilityChangeSummaryDto BuildIisChangeSummary(
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope previousSnapshot)
+    {
+        var latest = JsonSerializer.Deserialize<IisSnapshotDto>(latestSnapshot.PayloadJson, JsonOptions) ?? new IisSnapshotDto();
+        var previous = JsonSerializer.Deserialize<IisSnapshotDto>(previousSnapshot.PayloadJson, JsonOptions) ?? new IisSnapshotDto();
+
+        var latestPools = latest.AppPools.ToDictionary(pool => pool.Name, StringComparer.OrdinalIgnoreCase);
+        var previousPools = previous.AppPools.ToDictionary(pool => pool.Name, StringComparer.OrdinalIgnoreCase);
+        var latestSites = latest.Sites.ToDictionary(site => site.Name, StringComparer.OrdinalIgnoreCase);
+        var previousSites = previous.Sites.ToDictionary(site => site.Name, StringComparer.OrdinalIgnoreCase);
+
+        var addedPools = latestPools.Keys.Except(previousPools.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedPools = previousPools.Keys.Except(latestPools.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changedPools = latestPools.Keys.Intersect(previousPools.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key => !string.Equals(latestPools[key].State, previousPools[key].State, StringComparison.OrdinalIgnoreCase))
+            .Select(key => $"{key}: {previousPools[key].State} -> {latestPools[key].State}")
+            .OrderBy(x => x)
+            .ToList();
+
+        var addedSites = latestSites.Keys.Except(previousSites.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedSites = previousSites.Keys.Except(latestSites.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changedSites = latestSites.Keys.Intersect(previousSites.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key =>
+                !string.Equals(latestSites[key].State, previousSites[key].State, StringComparison.OrdinalIgnoreCase) ||
+                !AreSetsEqual(latestSites[key].Bindings, previousSites[key].Bindings))
+            .Select(key => $"{key}: {previousSites[key].State} -> {latestSites[key].State}")
+            .OrderBy(x => x)
+            .ToList();
+
+        var highlights = new List<string>();
+        highlights.AddRange(FormatHighlights("Added app pool", addedPools));
+        highlights.AddRange(FormatHighlights("Removed app pool", removedPools));
+        highlights.AddRange(FormatHighlights("App pool changed", changedPools));
+        highlights.AddRange(FormatHighlights("Added site", addedSites));
+        highlights.AddRange(FormatHighlights("Removed site", removedSites));
+        highlights.AddRange(FormatHighlights("Site changed", changedSites));
+
+        var changeCount = addedPools.Count + removedPools.Count + changedPools.Count + addedSites.Count + removedSites.Count + changedSites.Count;
+        var summary = $"{addedPools.Count + addedSites.Count} added, {removedPools.Count + removedSites.Count} removed, {changedPools.Count + changedSites.Count} changed.";
+        return new CapabilityChangeSummaryDto(true, changeCount > 0, previousSnapshot.CollectedUtc, summary, highlights.Take(6).ToList());
+    }
+
+    private static CapabilityChangeSummaryDto BuildUsersAndGroupsChangeSummary(
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope previousSnapshot)
+    {
+        var latest = JsonSerializer.Deserialize<UsersAndGroupsSnapshotDto>(latestSnapshot.PayloadJson, JsonOptions) ?? new UsersAndGroupsSnapshotDto();
+        var previous = JsonSerializer.Deserialize<UsersAndGroupsSnapshotDto>(previousSnapshot.PayloadJson, JsonOptions) ?? new UsersAndGroupsSnapshotDto();
+
+        var latestUsers = latest.Users.ToDictionary(user => user.Name, StringComparer.OrdinalIgnoreCase);
+        var previousUsers = previous.Users.ToDictionary(user => user.Name, StringComparer.OrdinalIgnoreCase);
+        var latestGroups = latest.Groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
+        var previousGroups = previous.Groups.ToDictionary(group => group.Name, StringComparer.OrdinalIgnoreCase);
+
+        var addedUsers = latestUsers.Keys.Except(previousUsers.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedUsers = previousUsers.Keys.Except(latestUsers.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changedUsers = latestUsers.Keys.Intersect(previousUsers.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key => latestUsers[key].Enabled != previousUsers[key].Enabled)
+            .Select(key => $"{key}: {(previousUsers[key].Enabled ? "Enabled" : "Disabled")} -> {(latestUsers[key].Enabled ? "Enabled" : "Disabled")}")
+            .OrderBy(x => x)
+            .ToList();
+
+        var addedGroups = latestGroups.Keys.Except(previousGroups.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedGroups = previousGroups.Keys.Except(latestGroups.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changedGroups = latestGroups.Keys.Intersect(previousGroups.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key => !AreSetsEqual(
+                latestGroups[key].Members.Select(member => member.Name),
+                previousGroups[key].Members.Select(member => member.Name)))
+            .OrderBy(key => key)
+            .ToList();
+
+        var highlights = new List<string>();
+        highlights.AddRange(FormatHighlights("Added user", addedUsers));
+        highlights.AddRange(FormatHighlights("Removed user", removedUsers));
+        highlights.AddRange(FormatHighlights("User changed", changedUsers));
+        highlights.AddRange(FormatHighlights("Added group", addedGroups));
+        highlights.AddRange(FormatHighlights("Removed group", removedGroups));
+        highlights.AddRange(FormatHighlights("Group membership changed", changedGroups));
+
+        var changeCount = addedUsers.Count + removedUsers.Count + changedUsers.Count + addedGroups.Count + removedGroups.Count + changedGroups.Count;
+        var summary = $"{addedUsers.Count + addedGroups.Count} added, {removedUsers.Count + removedGroups.Count} removed, {changedUsers.Count + changedGroups.Count} changed.";
+        return new CapabilityChangeSummaryDto(true, changeCount > 0, previousSnapshot.CollectedUtc, summary, highlights.Take(6).ToList());
+    }
+
+    private static CapabilityChangeSummaryDto BuildFileTreeChangeSummary(
+        CapabilitySnapshotEnvelope latestSnapshot,
+        CapabilitySnapshotEnvelope previousSnapshot)
+    {
+        var latest = JsonSerializer.Deserialize<FileTreeSnapshotDto>(latestSnapshot.PayloadJson, JsonOptions) ?? new FileTreeSnapshotDto();
+        var previous = JsonSerializer.Deserialize<FileTreeSnapshotDto>(previousSnapshot.PayloadJson, JsonOptions) ?? new FileTreeSnapshotDto();
+
+        var latestRoots = latest.Roots.ToDictionary(root => root.RootPath, StringComparer.OrdinalIgnoreCase);
+        var previousRoots = previous.Roots.ToDictionary(root => root.RootPath, StringComparer.OrdinalIgnoreCase);
+        var latestNodes = FlattenNodes(latest.Roots);
+        var previousNodes = FlattenNodes(previous.Roots);
+
+        var addedRoots = latestRoots.Keys.Except(previousRoots.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedRoots = previousRoots.Keys.Except(latestRoots.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var addedNodes = latestNodes.Keys.Except(previousNodes.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removedNodes = previousNodes.Keys.Except(latestNodes.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var changedNodes = latestNodes.Keys.Intersect(previousNodes.Keys, StringComparer.OrdinalIgnoreCase)
+            .Where(key =>
+                latestNodes[key].IsDirectory != previousNodes[key].IsDirectory ||
+                latestNodes[key].SizeBytes != previousNodes[key].SizeBytes ||
+                !string.Equals(latestNodes[key].Owner, previousNodes[key].Owner, StringComparison.OrdinalIgnoreCase) ||
+                !AreSetsEqual(latestNodes[key].Permissions, previousNodes[key].Permissions))
+            .OrderBy(key => key)
+            .ToList();
+
+        var highlights = new List<string>();
+        highlights.AddRange(FormatHighlights("Added root", addedRoots));
+        highlights.AddRange(FormatHighlights("Removed root", removedRoots));
+        highlights.AddRange(FormatHighlights("Added path", addedNodes));
+        highlights.AddRange(FormatHighlights("Removed path", removedNodes));
+        highlights.AddRange(FormatHighlights("Changed path", changedNodes));
+
+        var changeCount = addedRoots.Count + removedRoots.Count + addedNodes.Count + removedNodes.Count + changedNodes.Count;
+        var summary = $"{addedNodes.Count + addedRoots.Count} added, {removedNodes.Count + removedRoots.Count} removed, {changedNodes.Count} changed.";
+        return new CapabilityChangeSummaryDto(true, changeCount > 0, previousSnapshot.CollectedUtc, summary, highlights.Take(6).ToList());
+    }
+
+    private static Dictionary<string, FileTreeNodeDto> FlattenNodes(IReadOnlyList<FileTreeRootDto> roots)
+    {
+        var nodes = new Dictionary<string, FileTreeNodeDto>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var root in roots)
+        {
+            foreach (var node in root.Nodes)
+            {
+                FlattenNode(nodes, node);
+            }
+        }
+
+        return nodes;
+    }
+
+    private static void FlattenNode(IDictionary<string, FileTreeNodeDto> nodes, FileTreeNodeDto node)
+    {
+        nodes[node.FullPath] = node;
+        foreach (var child in node.Children)
+        {
+            FlattenNode(nodes, child);
+        }
+    }
+
+    private static bool AreSetsEqual(IEnumerable<string>? left, IEnumerable<string>? right)
+        => new HashSet<string>(left ?? [], StringComparer.OrdinalIgnoreCase).SetEquals(right ?? []);
+
+    private static List<string> BuildHighlights(
+        IReadOnlyList<string> added,
+        string addedPrefix,
+        IReadOnlyList<string> removed,
+        string removedPrefix,
+        IReadOnlyList<string> changed,
+        string changedPrefix)
+    {
+        var highlights = new List<string>();
+        highlights.AddRange(FormatHighlights(addedPrefix, added));
+        highlights.AddRange(FormatHighlights(removedPrefix, removed));
+        highlights.AddRange(FormatHighlights(changedPrefix, changed));
+        return highlights.Take(6).ToList();
+    }
+
+    private static IEnumerable<string> FormatHighlights(string prefix, IReadOnlyList<string> items)
+        => items.Take(2).Select(item => $"{prefix}: {item}");
 
     private async Task<IReadOnlyList<ActionCommandSummaryDto>> GetRecentActionsAsync(
         SqliteConnection connection,
@@ -804,4 +1105,9 @@ public sealed class SqliteCentralStore : ICentralStore
         int PendingCount,
         int InProgressCount,
         int FailedCount);
+
+    private sealed record CapabilitySnapshotEnvelope(
+        DateTimeOffset CollectedUtc,
+        string Hash,
+        string PayloadJson);
 }
