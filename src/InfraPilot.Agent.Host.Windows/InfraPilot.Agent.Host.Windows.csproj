@@ -12,6 +12,7 @@
     <ProjectReference Include="..\InfraPilot.Capabilities.Iis.Windows\InfraPilot.Capabilities.Iis.Windows.csproj" />
     <ProjectReference Include="..\InfraPilot.Capabilities.ScheduledTasks.Windows\InfraPilot.Capabilities.ScheduledTasks.Windows.csproj" />
     <ProjectReference Include="..\InfraPilot.Capabilities.Services.Windows\InfraPilot.Capabilities.Services.Windows.csproj" />
+    <ProjectReference Include="..\InfraPilot.Capabilities.UsersAndGroups.Windows\InfraPilot.Capabilities.UsersAndGroups.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

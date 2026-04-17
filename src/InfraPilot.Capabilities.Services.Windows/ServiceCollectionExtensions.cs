@@ -1,9 +1,11 @@
 namespace InfraPilot.Capabilities.Services.Windows;
 
+using System.Runtime.Versioning;
 using InfraPilot.Capabilities.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+[SupportedOSPlatform("windows")]
 public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddWindowsServicesCapability(this IServiceCollection services, IConfiguration configuration)

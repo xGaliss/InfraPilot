@@ -1,5 +1,6 @@
 namespace InfraPilot.Capabilities.Services.Windows;
 
+using System.Runtime.Versioning;
 using InfraPilot.Capabilities.Abstractions;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Capabilities;
@@ -7,6 +8,7 @@ using InfraPilot.Contracts.Services;
 using Microsoft.Extensions.Options;
 using System.ServiceProcess;
 
+[SupportedOSPlatform("windows")]
 public sealed class WindowsServicesCapabilityModule : ICapabilityModule
 {
     private readonly ServicesCapabilityOptions _options;

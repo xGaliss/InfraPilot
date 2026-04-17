@@ -8,5 +8,9 @@ public sealed class FileTreeCapabilityOptions
 
     public int MaxDepth { get; set; } = 2;
 
+    public bool IncludePermissions { get; set; } = true;
+
+    public int MaxPermissionEntries { get; set; } = 6;
+
     public List<string> Roots { get; set; } = [];
 }

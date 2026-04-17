@@ -8,6 +8,7 @@ using InfraPilot.Contracts.FileTree;
 using InfraPilot.Contracts.Iis;
 using InfraPilot.Contracts.ScheduledTasks;
 using InfraPilot.Contracts.Services;
+using InfraPilot.Contracts.UsersAndGroups;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -40,6 +41,8 @@ public sealed class DetailsModel : PageModel
     public IisSnapshotDto IisSnapshot { get; private set; } = new();
 
     public FileTreeSnapshotDto FileTreeSnapshot { get; private set; } = new();
+
+    public UsersAndGroupsSnapshotDto UsersAndGroupsSnapshot { get; private set; } = new();
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -122,6 +125,11 @@ public sealed class DetailsModel : PageModel
                 case CapabilityKeys.FileTree:
                     FileTreeSnapshot = JsonSerializer.Deserialize<FileTreeSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
                         ?? new FileTreeSnapshotDto();
+                    break;
+
+                case CapabilityKeys.UsersAndGroups:
+                    UsersAndGroupsSnapshot = JsonSerializer.Deserialize<UsersAndGroupsSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
+                        ?? new UsersAndGroupsSnapshotDto();
                     break;
             }
         }

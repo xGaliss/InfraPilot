@@ -3,6 +3,7 @@ using InfraPilot.Capabilities.FileTree.Windows;
 using InfraPilot.Capabilities.Iis.Windows;
 using InfraPilot.Capabilities.ScheduledTasks.Windows;
 using InfraPilot.Capabilities.Services.Windows;
+using InfraPilot.Capabilities.UsersAndGroups.Windows;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -16,6 +17,7 @@ builder.Services.AddWindowsServicesCapability(builder.Configuration);
 builder.Services.AddWindowsScheduledTasksCapability(builder.Configuration);
 builder.Services.AddWindowsFileTreeCapability(builder.Configuration);
 builder.Services.AddWindowsIisCapability(builder.Configuration);
+builder.Services.AddWindowsUsersAndGroupsCapability(builder.Configuration);
 
 var host = builder.Build();
 await host.RunAsync();

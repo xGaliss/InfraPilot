@@ -1,6 +1,7 @@
 @page "{id:guid}"
 @using InfraPilot.Contracts.Capabilities
 @using InfraPilot.Contracts.FileTree
+@using InfraPilot.Contracts.UsersAndGroups
 @model InfraPilot.Web.Pages.Agents.DetailsModel
 @{
     ViewData["Title"] = "Agent Detail";
@@ -16,10 +17,13 @@ else
     var scheduledTasks = Model.ScheduledTasksSnapshot.Tasks ?? [];
     var appPools = Model.IisSnapshot.AppPools ?? [];
     var sites = Model.IisSnapshot.Sites ?? [];
+    var users = Model.UsersAndGroupsSnapshot.Users ?? [];
+    var groups = Model.UsersAndGroupsSnapshot.Groups ?? [];
     var hasServices = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.Services);
     var hasScheduledTasks = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.ScheduledTasks);
     var hasIis = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.Iis);
     var hasFileTree = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.FileTree);
+    var hasUsersAndGroups = Model.Agent.Capabilities.Any(x => x.Descriptor.CapabilityKey == CapabilityKeys.UsersAndGroups);
     var healthClass = Model.Agent.HealthStatus switch
     {
         "Healthy" => "health-good",
@@ -73,6 +77,8 @@ else
             <article class="summary-card"><span class="summary-label">Tasks</span><strong>@scheduledTasks.Count</strong></article>
             <article class="summary-card"><span class="summary-label">IIS Sites</span><strong>@sites.Count</strong></article>
             <article class="summary-card"><span class="summary-label">App Pools</span><strong>@appPools.Count</strong></article>
+            <article class="summary-card"><span class="summary-label">Users</span><strong>@users.Count</strong></article>
+            <article class="summary-card"><span class="summary-label">Groups</span><strong>@groups.Count</strong></article>
             <article class="summary-card"><span class="summary-label">Roots</span><strong>@Model.FileTreeSnapshot.Roots.Count</strong></article>
         </section>
 
@@ -102,6 +108,10 @@ else
                 {
                     <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-filetree-tab" data-bs-toggle="pill" data-bs-target="#tab-filetree" type="button">File Tree <span class="tab-count">@Model.FileTreeSnapshot.Roots.Count</span></button></li>
                 }
+                @if (hasUsersAndGroups)
+                {
+                    <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-usersgroups-tab" data-bs-toggle="pill" data-bs-target="#tab-usersgroups" type="button">Users &amp; Groups <span class="tab-count">@(users.Count + groups.Count)</span></button></li>
+                }
                 <li class="nav-item"><button class="nav-link agent-tab-button" id="tab-actions-tab" data-bs-toggle="pill" data-bs-target="#tab-actions" type="button">Actions <span class="tab-count">@Model.Agent.RecentActions.Count</span></button></li>
             </ul>
 
@@ -124,6 +134,10 @@ else
                             @if (hasFileTree)
                             {
                                 <section class="overview-card"><div class="overview-card-head"><h3>File Tree</h3><span class="timestamp-chip">@Model.FileTreeSnapshot.Roots.Count roots</span></div><p class="capability-preview">Browse configured roots in a dedicated tab instead of an endless tree dump.</p></section>
+                            }
+                            @if (hasUsersAndGroups)
+                            {
+                                <section class="overview-card"><div class="overview-card-head"><h3>Users &amp; Groups</h3><span class="timestamp-chip">@users.Count users · @groups.Count groups</span></div><p class="capability-preview">Inspect local identities and group membership without opening the server directly.</p></section>
                             }
                         </div>
 
@@ -377,6 +391,19 @@ else
                                             var rows = Model.BuildFileTreeRows(root.Nodes);
                                             <section class="nested-panel">
                                                 <div class="panel-heading"><h4>@root.RootPath</h4><span>@rows.Count entries</span></div>
+                                                @if (!string.IsNullOrWhiteSpace(root.Owner))
+                                                {
+                                                    <p class="tree-security-line">Owner: @root.Owner</p>
+                                                }
+                                                @if (root.Permissions.Count > 0)
+                                                {
+                                                    <div class="tree-security-chips root-security-block">
+                                                        @foreach (var permission in root.Permissions)
+                                                        {
+                                                            <span class="security-chip">@permission</span>
+                                                        }
+                                                    </div>
+                                                }
                                                 @if (rows.Count == 0)
                                                 {
                                                     <p class="empty-state">This root is empty or the configured depth reached no visible items.</p>
@@ -391,6 +418,101 @@ else
                                         }
                                     </div>
                                 }
+                            </div>
+                        </article>
+                    </div>
+                }
+
+                @if (hasUsersAndGroups)
+                {
+                    <div class="tab-pane fade" id="tab-usersgroups">
+                        <article class="capability-card polished">
+                            <header class="capability-header">
+                                <div>
+                                    <h3>Users &amp; Groups</h3>
+                                    <p>Inspect local server identities and the members attached to each group.</p>
+                                </div>
+                                <span class="timestamp-chip">@users.Count users · @groups.Count groups</span>
+                            </header>
+                            <div class="tab-panel-body">
+                                <div class="split-grid">
+                                    <section class="nested-panel">
+                                        <div class="panel-heading"><h4>Local Users</h4><span>@users.Count total</span></div>
+                                        @if (users.Count == 0)
+                                        {
+                                            <p class="empty-state">No local users were returned by this agent.</p>
+                                        }
+                                        else
+                                        {
+                                            <div class="data-table-wrap">
+                                                <table class="table data-table">
+                                                    <thead><tr><th>User</th><th>Status</th><th>Password</th><th>Last Logon</th></tr></thead>
+                                                    <tbody>
+                                                    @foreach (var user in users.Take(120))
+                                                    {
+                                                        var passwordMode = user.PasswordRequired ? (user.PasswordExpires ? "Required · Expires" : "Required · No expiry") : "Not required";
+                                                        <tr>
+                                                            <td>
+                                                                <div class="primary-cell">@user.Name</div>
+                                                                <div class="muted">@(!string.IsNullOrWhiteSpace(user.FullName) ? user.FullName : user.Description ?? "-")</div>
+                                                            </td>
+                                                            <td>
+                                                                <span class="state-pill">@(user.Enabled ? "Enabled" : "Disabled")</span>
+                                                            </td>
+                                                            <td>@passwordMode</td>
+                                                            <td>@(!string.IsNullOrWhiteSpace(user.LastLogonRaw) ? user.LastLogonRaw : "-")</td>
+                                                        </tr>
+                                                    }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    </section>
+
+                                    <section class="nested-panel">
+                                        <div class="panel-heading"><h4>Local Groups</h4><span>@groups.Count total</span></div>
+                                        @if (groups.Count == 0)
+                                        {
+                                            <p class="empty-state">No local groups were returned by this agent.</p>
+                                        }
+                                        else
+                                        {
+                                            <div class="group-stack">
+                                                @foreach (var group in groups.Take(80))
+                                                {
+                                                    <details class="group-card">
+                                                        <summary class="group-card-summary">
+                                                            <div class="group-card-title">
+                                                                <strong>@group.Name</strong>
+                                                                <span class="muted">@(!string.IsNullOrWhiteSpace(group.Description) ? group.Description : "No description")</span>
+                                                            </div>
+                                                            <span class="timestamp-chip">@group.Members.Count members</span>
+                                                        </summary>
+
+                                                        <div class="group-card-body">
+                                                            @if (group.Members.Count == 0)
+                                                            {
+                                                                <p class="empty-state">This group has no visible members in the current snapshot.</p>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="member-list">
+                                                                    @foreach (var member in group.Members)
+                                                                    {
+                                                                        <div class="member-pill">
+                                                                            <strong>@member.Name</strong>
+                                                                            <span>@(member.ObjectClass ?? "principal")@(string.IsNullOrWhiteSpace(member.PrincipalSource) ? string.Empty : $" · {member.PrincipalSource}")</span>
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    </details>
+                                                }
+                                            </div>
+                                        }
+                                    </section>
+                                </div>
                             </div>
                         </article>
                     </div>

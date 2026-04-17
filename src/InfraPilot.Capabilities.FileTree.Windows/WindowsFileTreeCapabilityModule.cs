@@ -1,11 +1,15 @@
 namespace InfraPilot.Capabilities.FileTree.Windows;
 
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using InfraPilot.Capabilities.Abstractions;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Capabilities;
 using InfraPilot.Contracts.FileTree;
 using Microsoft.Extensions.Options;
 
+[SupportedOSPlatform("windows")]
 public sealed class WindowsFileTreeCapabilityModule : ICapabilityModule
 {
     private readonly FileTreeCapabilityOptions _options;
@@ -29,7 +33,15 @@ public sealed class WindowsFileTreeCapabilityModule : ICapabilityModule
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(Directory.Exists)
-            .Select(path => new FileTreeRootDto(path, BuildNodes(path, depth: 0, cancellationToken)))
+            .Select(path =>
+            {
+                var rootInfo = new DirectoryInfo(path);
+                return new FileTreeRootDto(
+                    path,
+                    TryGetOwner(rootInfo),
+                    TryGetPermissions(rootInfo),
+                    BuildNodes(path, depth: 0, cancellationToken));
+            })
             .ToList();
 
         return Task.FromResult(new CapabilitySnapshotResult(
@@ -63,6 +75,8 @@ public sealed class WindowsFileTreeCapabilityModule : ICapabilityModule
                     Name = info.Name,
                     FullPath = info.FullName,
                     IsDirectory = true,
+                    Owner = TryGetOwner(info),
+                    Permissions = TryGetPermissions(info),
                     Children = BuildNodes(info.FullName, depth + 1, cancellationToken)
                 });
             }
@@ -76,7 +90,9 @@ public sealed class WindowsFileTreeCapabilityModule : ICapabilityModule
                     Name = info.Name,
                     FullPath = info.FullName,
                     IsDirectory = false,
-                    SizeBytes = info.Exists ? info.Length : null
+                    SizeBytes = info.Exists ? info.Length : null,
+                    Owner = TryGetOwner(info),
+                    Permissions = TryGetPermissions(info)
                 });
             }
         }
@@ -89,5 +105,78 @@ public sealed class WindowsFileTreeCapabilityModule : ICapabilityModule
             .OrderByDescending(node => node.IsDirectory)
             .ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private string? TryGetOwner(FileSystemInfo info)
+    {
+        if (!_options.IncludePermissions)
+        {
+            return null;
+        }
+
+        try
+        {
+            var security = GetSecurity(info);
+            var owner = security?.GetOwner(typeof(NTAccount));
+            return owner?.Value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private IReadOnlyList<string> TryGetPermissions(FileSystemInfo info)
+    {
+        if (!_options.IncludePermissions)
+        {
+            return [];
+        }
+
+        try
+        {
+            var security = GetSecurity(info);
+            if (security is null)
+            {
+                return [];
+            }
+
+            var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(NTAccount));
+            var entries = new List<string>();
+
+            foreach (FileSystemAccessRule rule in rules)
+            {
+                var identity = rule.IdentityReference?.Value;
+                if (string.IsNullOrWhiteSpace(identity))
+                {
+                    continue;
+                }
+
+                var accessType = rule.AccessControlType == AccessControlType.Allow ? "Allow" : "Deny";
+                var inheritance = rule.IsInherited ? "Inherited" : "Explicit";
+                entries.Add($"{identity}: {accessType} {rule.FileSystemRights} ({inheritance})");
+
+                if (entries.Count >= Math.Max(1, _options.MaxPermissionEntries))
+                {
+                    break;
+                }
+            }
+
+            return entries;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static FileSystemSecurity? GetSecurity(FileSystemInfo info)
+    {
+        return info switch
+        {
+            DirectoryInfo directory => directory.GetAccessControl(),
+            FileInfo file => file.GetAccessControl(),
+            _ => null
+        };
     }
 }
