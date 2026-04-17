@@ -13,6 +13,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 public sealed class DetailsModel : PageModel
 {
+    private static readonly JsonSerializerOptions SnapshotJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly CentralApiClient _centralApiClient;
 
     public DetailsModel(CentralApiClient centralApiClient)
@@ -80,22 +85,22 @@ public sealed class DetailsModel : PageModel
             switch (capability.Descriptor.CapabilityKey)
             {
                 case CapabilityKeys.Services:
-                    ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(capability.LatestPayloadJson)
+                    ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
                         ?? new ServiceSnapshotDto();
                     break;
 
                 case CapabilityKeys.ScheduledTasks:
-                    ScheduledTasksSnapshot = JsonSerializer.Deserialize<ScheduledTaskSnapshotDto>(capability.LatestPayloadJson)
+                    ScheduledTasksSnapshot = JsonSerializer.Deserialize<ScheduledTaskSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
                         ?? new ScheduledTaskSnapshotDto();
                     break;
 
                 case CapabilityKeys.Iis:
-                    IisSnapshot = JsonSerializer.Deserialize<IisSnapshotDto>(capability.LatestPayloadJson)
+                    IisSnapshot = JsonSerializer.Deserialize<IisSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
                         ?? new IisSnapshotDto();
                     break;
 
                 case CapabilityKeys.FileTree:
-                    FileTreeSnapshot = JsonSerializer.Deserialize<FileTreeSnapshotDto>(capability.LatestPayloadJson)
+                    FileTreeSnapshot = JsonSerializer.Deserialize<FileTreeSnapshotDto>(capability.LatestPayloadJson, SnapshotJsonOptions)
                         ?? new FileTreeSnapshotDto();
                     break;
             }
