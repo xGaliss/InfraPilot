@@ -1,0 +1,40 @@
+@page
+@model InfraPilot.Web.Pages.IndexModel
+@{
+    ViewData["Title"] = "Agents";
+}
+
+<div class="space-y-3">
+    <div>
+        <h1>InfraPilot Agents</h1>
+        <p>Central view of enrolled agents and their published capabilities.</p>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Machine</th>
+                <th>Status</th>
+                <th>Version</th>
+                <th>Last Seen</th>
+                <th>Capabilities</th>
+                <th>Last Action</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var agent in Model.Agents)
+        {
+            <tr>
+                <td><a asp-page="/Agents/Details" asp-route-id="@agent.AgentId">@agent.DisplayName</a></td>
+                <td>@agent.MachineName</td>
+                <td>@agent.Status</td>
+                <td>@agent.AgentVersion</td>
+                <td>@(agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</td>
+                <td>@string.Join(", ", agent.CapabilityKeys)</td>
+                <td>@(agent.LastActionStatus is null ? "-" : $"{agent.LastActionStatus}: {agent.LastActionSummary}")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

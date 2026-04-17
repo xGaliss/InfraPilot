@@ -1,0 +1,39 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Test and coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Logs and local runtime data
+*.log
+logs/
+data/
+
+# NuGet
+packages/
+*.nupkg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local reference repos used only for analysis
+.references/
+
+# Generated local secrets/config variants
+appsettings.Local.json
+appsettings.*.local.json

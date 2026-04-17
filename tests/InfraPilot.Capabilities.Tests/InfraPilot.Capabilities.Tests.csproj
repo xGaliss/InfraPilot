@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\InfraPilot.Capabilities.Abstractions\InfraPilot.Capabilities.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\InfraPilot.Capabilities.FileTree.Windows\InfraPilot.Capabilities.FileTree.Windows.csproj" />
+    <ProjectReference Include="..\..\src\InfraPilot.Capabilities.Iis.Windows\InfraPilot.Capabilities.Iis.Windows.csproj" />
+    <ProjectReference Include="..\..\src\InfraPilot.Capabilities.ScheduledTasks.Windows\InfraPilot.Capabilities.ScheduledTasks.Windows.csproj" />
+    <ProjectReference Include="..\..\src\InfraPilot.Capabilities.Services.Windows\InfraPilot.Capabilities.Services.Windows.csproj" />
+    <ProjectReference Include="..\..\src\InfraPilot.Contracts\InfraPilot.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

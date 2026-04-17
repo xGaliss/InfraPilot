@@ -1,0 +1,108 @@
+@page "{id:guid}"
+@model InfraPilot.Web.Pages.Agents.DetailsModel
+@{
+    ViewData["Title"] = "Agent Detail";
+}
+
+@if (Model.Agent is null)
+{
+    <h1>Agent not found</h1>
+}
+else
+{
+    <div class="space-y-3">
+        <div class="detail-header">
+            <div>
+                <h1>@Model.Agent.DisplayName</h1>
+                <p>@Model.Agent.MachineName · @Model.Agent.Status · Last seen @(Model.Agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</p>
+            </div>
+
+            @if (Model.Agent.Status == "Pending")
+            {
+                <form method="post" asp-page-handler="Approve">
+                    <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                    <button type="submit" class="btn btn-primary">Approve agent</button>
+                </form>
+            }
+        </div>
+
+        <section>
+            <h2>Capabilities</h2>
+
+            @foreach (var capability in Model.Agent.Capabilities)
+            {
+                <article class="capability-card">
+                    <header>
+                        <h3>@capability.Descriptor.DisplayName</h3>
+                        <p>@capability.Descriptor.CapabilityKey · schema @capability.Descriptor.Version</p>
+                    </header>
+
+                    @if (capability.Descriptor.CapabilityKey == "services" && Model.ServicesSnapshot is not null)
+                    {
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var service in Model.ServicesSnapshot.Services.Take(50))
+                            {
+                                <tr>
+                                    <td>@service.DisplayName <span class="muted">(@service.ServiceName)</span></td>
+                                    <td>@service.Status</td>
+                                    <td>
+                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                            <input type="hidden" name="capabilityKey" value="services" />
+                                            <input type="hidden" name="targetKey" value="@service.ServiceName" />
+                                            <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="start">Start</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="stop">Stop</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="restart">Restart</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <pre>@capability.LatestPayloadJson</pre>
+                    }
+                </article>
+            }
+        </section>
+
+        <section>
+            <h2>Recent actions</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Capability</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var action in Model.Agent.RecentActions)
+                {
+                    <tr>
+                        <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
+                        <td>@action.CapabilityKey</td>
+                        <td>@action.ActionKey</td>
+                        <td>@action.TargetKey</td>
+                        <td>@action.Status</td>
+                        <td>@(action.ResultMessage ?? action.ErrorMessage)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </section>
+    </div>
+}
