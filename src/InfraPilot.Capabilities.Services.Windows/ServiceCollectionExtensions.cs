@@ -1,12 +1,23 @@
 namespace InfraPilot.Capabilities.Services.Windows;
 
 using InfraPilot.Capabilities.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddWindowsServicesCapability(this IServiceCollection services)
+    public static IServiceCollection AddWindowsServicesCapability(this IServiceCollection services, IConfiguration configuration)
     {
+        var options = configuration.GetSection(ServicesCapabilityOptions.SectionName).Get<ServicesCapabilityOptions>()
+            ?? new ServicesCapabilityOptions();
+
+        services.Configure<ServicesCapabilityOptions>(configuration.GetSection(ServicesCapabilityOptions.SectionName));
+
+        if (!options.Enabled)
+        {
+            return services;
+        }
+
         services.AddSingleton<ICapabilityModule, WindowsServicesCapabilityModule>();
         return services;
     }

@@ -5,7 +5,7 @@ a.navbar-brand {
 }
 
 a {
-  color: #0a5db1;
+  color: #0d5f63;
 }
 
 .border-top {
@@ -24,6 +24,15 @@ a {
   width: 100%;
   white-space: nowrap;
   line-height: 60px;
+}
+
+.container {
+  max-width: 1320px;
+}
+
+.agent-page {
+  display: grid;
+  gap: 1.5rem;
 }
 
 .space-y-3 > * + * {
@@ -45,6 +54,84 @@ a {
   background: #fff;
 }
 
+.hero-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 2rem;
+  border-radius: 18px;
+  border: 1px solid #dfe9e3;
+  background:
+    radial-gradient(circle at top right, rgba(180, 222, 211, 0.55), transparent 34%),
+    linear-gradient(135deg, #f6fbf8 0%, #ffffff 55%, #eef8f3 100%);
+}
+
+.hero-card h1 {
+  margin: 0;
+  font-size: 3rem;
+  line-height: 1.05;
+}
+
+.hero-meta {
+  margin: 0.5rem 0 0;
+  color: #5a6a64;
+  font-size: 1.05rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: #6c7c76;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.9rem;
+}
+
+.summary-card {
+  border: 1px solid #e4ece7;
+  border-radius: 14px;
+  background: #fbfdfc;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.summary-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6f7e78;
+}
+
+.summary-card strong {
+  font-size: 1.9rem;
+  line-height: 1;
+  color: #21302a;
+}
+
+.capability-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-heading h2 {
+  margin: 0;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -61,10 +148,147 @@ a {
   color: #777;
 }
 
+.primary-cell {
+  font-weight: 600;
+  color: #1f2a26;
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #eef5f2;
+  color: #325b4f;
+}
+
+.timestamp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #eff6f2;
+  color: #53655e;
+  font-size: 0.82rem;
+}
+
 .inline-form {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.capability-card.polished {
+  border-radius: 18px;
+  border: 1px solid #dfe7e2;
+  background: #ffffff;
+  box-shadow: 0 12px 40px rgba(31, 53, 42, 0.06);
+}
+
+.capability-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.capability-header h3,
+.panel-heading h4 {
+  margin: 0;
+}
+
+.capability-header p,
+.panel-heading span {
+  margin: 0.35rem 0 0;
+  color: #64746d;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.tree-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.nested-panel {
+  border: 1px solid #ebf1ee;
+  border-radius: 14px;
+  padding: 1rem;
+  background: #fcfefd;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  min-width: 760px;
+}
+
+.truncate-cell {
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-list {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.tree-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: baseline;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+}
+
+.tree-row:nth-child(odd) {
+  background: rgba(240, 245, 242, 0.7);
+}
+
+.tree-kind {
+  display: inline-flex;
+  min-width: 2.8rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #4d655d;
+}
+
+.tree-name {
+  font-weight: 600;
+  color: #22312b;
+}
+
+.tree-meta {
+  color: #71817b;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-state,
+.empty-cell {
+  color: #687772;
+  margin: 0;
 }
 
 pre {
@@ -74,4 +298,15 @@ pre {
   padding: 0.75rem;
   overflow: auto;
   margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .hero-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero-card h1 {
+    font-size: 2.25rem;
+  }
 }

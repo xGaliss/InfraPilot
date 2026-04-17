@@ -4,10 +4,13 @@ using InfraPilot.Capabilities.Abstractions;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Capabilities;
 using InfraPilot.Contracts.Services;
+using Microsoft.Extensions.Options;
 using System.ServiceProcess;
 
 public sealed class WindowsServicesCapabilityModule : ICapabilityModule
 {
+    private readonly ServicesCapabilityOptions _options;
+
     private static readonly CapabilityDescriptorDto Descriptor = new(
         CapabilityKeys.Services,
         "Windows Services",
@@ -18,11 +21,20 @@ public sealed class WindowsServicesCapabilityModule : ICapabilityModule
             new CapabilityActionDefinitionDto("restart", "Restart service", true, "Restarts a running service.")
         ]);
 
+    public WindowsServicesCapabilityModule(IOptions<ServicesCapabilityOptions> options)
+    {
+        _options = options.Value;
+    }
+
     public CapabilityDescriptorDto Describe() => Descriptor;
 
     public Task<CapabilitySnapshotResult> CollectSnapshotAsync(CancellationToken cancellationToken)
     {
         var services = ServiceController.GetServices()
+            .Where(service => CapabilityFilter.Matches(
+                $"{service.ServiceName} {service.DisplayName}",
+                _options.IncludeNames,
+                _options.ExcludeNames))
             .OrderBy(service => service.DisplayName, StringComparer.OrdinalIgnoreCase)
             .Select(service => new ServiceStatusDto(
                 service.ServiceName,

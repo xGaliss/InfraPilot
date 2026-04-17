@@ -1,4 +1,5 @@
 @page "{id:guid}"
+@using InfraPilot.Contracts.Capabilities
 @model InfraPilot.Web.Pages.Agents.DetailsModel
 @{
     ViewData["Title"] = "Agent Detail";
@@ -10,11 +11,17 @@
 }
 else
 {
-    <div class="space-y-3">
-        <div class="detail-header">
+    var services = Model.ServicesSnapshot.Services ?? [];
+    var scheduledTasks = Model.ScheduledTasksSnapshot.Tasks ?? [];
+    var appPools = Model.IisSnapshot.AppPools ?? [];
+    var sites = Model.IisSnapshot.Sites ?? [];
+
+    <div class="agent-page">
+        <section class="hero-card">
             <div>
+                <p class="eyebrow">Agent Overview</p>
                 <h1>@Model.Agent.DisplayName</h1>
-                <p>@Model.Agent.MachineName · @Model.Agent.Status · Last seen @(Model.Agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</p>
+                <p class="hero-meta">@Model.Agent.MachineName · @Model.Agent.Status · Last seen @(Model.Agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</p>
             </div>
 
             @if (Model.Agent.Status == "Pending")
@@ -24,51 +31,281 @@ else
                     <button type="submit" class="btn btn-primary">Approve agent</button>
                 </form>
             }
-        </div>
+        </section>
 
-        <section>
-            <h2>Capabilities</h2>
+        <section class="summary-grid">
+            <article class="summary-card">
+                <span class="summary-label">Capabilities</span>
+                <strong>@Model.Agent.Capabilities.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Services</span>
+                <strong>@services.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Tasks</span>
+                <strong>@scheduledTasks.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">IIS Sites</span>
+                <strong>@sites.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">App Pools</span>
+                <strong>@appPools.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Roots</span>
+                <strong>@Model.FileTreeSnapshot.Roots.Count</strong>
+            </article>
+        </section>
 
-            @foreach (var capability in Model.Agent.Capabilities)
+        <section class="capability-shell">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Capabilities</p>
+                    <h2>What this agent exposes</h2>
+                </div>
+            </div>
+
+            @foreach (var capability in Model.Agent.Capabilities.OrderBy(capability => capability.Descriptor.DisplayName, StringComparer.OrdinalIgnoreCase))
             {
-                <article class="capability-card">
-                    <header>
-                        <h3>@capability.Descriptor.DisplayName</h3>
-                        <p>@capability.Descriptor.CapabilityKey · schema @capability.Descriptor.Version</p>
+                <article class="capability-card polished">
+                    <header class="capability-header">
+                        <div>
+                            <h3>@capability.Descriptor.DisplayName</h3>
+                            <p>@capability.Descriptor.CapabilityKey · schema @capability.Descriptor.Version</p>
+                        </div>
+                        <span class="timestamp-chip">Updated @(capability.LastCollectedUtc?.ToLocalTime().ToString("g") ?? "-")</span>
                     </header>
 
-                    @if (capability.Descriptor.CapabilityKey == "services" && Model.ServicesSnapshot is not null)
+                    @if (capability.Descriptor.CapabilityKey == CapabilityKeys.Services)
                     {
-                        var services = Model.ServicesSnapshot.Services ?? [];
+                        if (services.Count == 0)
+                        {
+                            <p class="empty-state">No services matched the current filter.</p>
+                        }
+                        else
+                        {
+                            <div class="data-table-wrap">
+                                <table class="table data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Service</th>
+                                            <th>Status</th>
+                                            <th>Type</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var service in services.Take(50))
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="primary-cell">@service.DisplayName</div>
+                                                <div class="muted">@service.ServiceName</div>
+                                            </td>
+                                            <td><span class="state-pill">@service.Status</span></td>
+                                            <td>@service.ServiceType</td>
+                                            <td>
+                                                <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                    <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                    <input type="hidden" name="capabilityKey" value="services" />
+                                                    <input type="hidden" name="targetKey" value="@service.ServiceName" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="start">Start</button>
+                                                    <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="stop">Stop</button>
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="restart">Restart</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (capability.Descriptor.CapabilityKey == CapabilityKeys.ScheduledTasks)
+                    {
+                        if (scheduledTasks.Count == 0)
+                        {
+                            <p class="empty-state">No scheduled tasks matched the current filter.</p>
+                        }
+                        else
+                        {
+                            <div class="data-table-wrap">
+                                <table class="table data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Task</th>
+                                            <th>Status</th>
+                                            <th>Run as</th>
+                                            <th>Command</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var task in scheduledTasks.Take(50))
+                                    {
+                                        var fullTaskName = $"{task.TaskPath}{task.TaskName}";
 
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Service</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            @foreach (var service in services.Take(50))
-                            {
-                                <tr>
-                                    <td>@service.DisplayName <span class="muted">(@service.ServiceName)</span></td>
-                                    <td>@service.Status</td>
-                                    <td>
-                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
-                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
-                                            <input type="hidden" name="capabilityKey" value="services" />
-                                            <input type="hidden" name="targetKey" value="@service.ServiceName" />
-                                            <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="start">Start</button>
-                                            <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="stop">Stop</button>
-                                            <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="restart">Restart</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
+                                        <tr>
+                                            <td>
+                                                <div class="primary-cell">@task.TaskName</div>
+                                                <div class="muted">@task.TaskPath</div>
+                                            </td>
+                                            <td><span class="state-pill">@task.Status</span></td>
+                                            <td>@(task.RunAsUser ?? "-")</td>
+                                            <td class="truncate-cell">@(task.TaskToRun ?? "-")</td>
+                                            <td>
+                                                <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                    <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                    <input type="hidden" name="capabilityKey" value="scheduledTasks" />
+                                                    <input type="hidden" name="targetKey" value="@fullTaskName" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="run">Run</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (capability.Descriptor.CapabilityKey == CapabilityKeys.Iis)
+                    {
+                        <div class="split-grid">
+                            <section class="nested-panel">
+                                <div class="panel-heading">
+                                    <h4>App Pools</h4>
+                                    <span>@appPools.Count total</span>
+                                </div>
+
+                                @if (appPools.Count == 0)
+                                {
+                                    <p class="empty-state">No app pools matched the current filter.</p>
+                                }
+                                else
+                                {
+                                    <div class="data-table-wrap">
+                                        <table class="table data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>State</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                            @foreach (var pool in appPools.Take(50))
+                                            {
+                                                <tr>
+                                                    <td class="primary-cell">@pool.Name</td>
+                                                    <td><span class="state-pill">@pool.State</span></td>
+                                                    <td>
+                                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                            <input type="hidden" name="capabilityKey" value="iis" />
+                                                            <input type="hidden" name="targetKey" value="@pool.Name" />
+                                                            <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="appPool.start">Start</button>
+                                                            <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="appPool.stop">Stop</button>
+                                                            <button type="submit" class="btn btn-sm btn-outline-primary" name="actionKey" value="appPool.recycle">Recycle</button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </section>
+
+                            <section class="nested-panel">
+                                <div class="panel-heading">
+                                    <h4>Sites</h4>
+                                    <span>@sites.Count total</span>
+                                </div>
+
+                                @if (sites.Count == 0)
+                                {
+                                    <p class="empty-state">No IIS sites matched the current filter.</p>
+                                }
+                                else
+                                {
+                                    <div class="data-table-wrap">
+                                        <table class="table data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>State</th>
+                                                    <th>Bindings</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                            @foreach (var site in sites.Take(50))
+                                            {
+                                                <tr>
+                                                    <td class="primary-cell">@site.Name</td>
+                                                    <td><span class="state-pill">@site.State</span></td>
+                                                    <td>@string.Join(", ", site.Bindings ?? [])</td>
+                                                    <td>
+                                                        <form method="post" asp-page-handler="QueueAction" class="inline-form">
+                                                            <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                                                            <input type="hidden" name="capabilityKey" value="iis" />
+                                                            <input type="hidden" name="targetKey" value="@site.Name" />
+                                                            <button type="submit" class="btn btn-sm btn-outline-success" name="actionKey" value="site.start">Start</button>
+                                                            <button type="submit" class="btn btn-sm btn-outline-warning" name="actionKey" value="site.stop">Stop</button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </section>
+                        </div>
+                    }
+                    else if (capability.Descriptor.CapabilityKey == CapabilityKeys.FileTree)
+                    {
+                        if (Model.FileTreeSnapshot.Roots.Count == 0)
+                        {
+                            <p class="empty-state">No file tree roots are configured or reachable on this agent.</p>
+                        }
+                        else
+                        {
+                            <div class="tree-grid">
+                                @foreach (var root in Model.FileTreeSnapshot.Roots)
+                                {
+                                    var rows = Model.BuildFileTreeRows(root.Nodes);
+
+                                    <section class="nested-panel">
+                                        <div class="panel-heading">
+                                            <h4>@root.RootPath</h4>
+                                            <span>@rows.Count entries</span>
+                                        </div>
+
+                                        @if (rows.Count == 0)
+                                        {
+                                            <p class="empty-state">This root is empty or the configured depth reached no visible items.</p>
+                                        }
+                                        else
+                                        {
+                                            <div class="tree-list">
+                                                @foreach (var row in rows.Take(80))
+                                                {
+                                                    <div class="tree-row" style="padding-left:@(row.Depth * 18)px">
+                                                        <span class="tree-kind">@(row.IsDirectory ? "DIR" : "FILE")</span>
+                                                        <span class="tree-name">@row.Name</span>
+                                                        <span class="tree-meta">@row.FullPath</span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </section>
+                                }
+                            </div>
+                        }
                     }
                     else
                     {
@@ -78,33 +315,52 @@ else
             }
         </section>
 
-        <section>
-            <h2>Recent actions</h2>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>When</th>
-                        <th>Capability</th>
-                        <th>Action</th>
-                        <th>Target</th>
-                        <th>Status</th>
-                        <th>Result</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach (var action in Model.Agent.RecentActions)
-                {
-                    <tr>
-                        <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
-                        <td>@action.CapabilityKey</td>
-                        <td>@action.ActionKey</td>
-                        <td>@action.TargetKey</td>
-                        <td>@action.Status</td>
-                        <td>@(action.ResultMessage ?? action.ErrorMessage)</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
+        <section class="capability-shell">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Actions</p>
+                    <h2>Recent activity</h2>
+                </div>
+            </div>
+
+            <article class="capability-card polished">
+                <div class="data-table-wrap">
+                    <table class="table data-table">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th>Capability</th>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Status</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @if (Model.Agent.RecentActions.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6" class="empty-cell">No actions have been recorded yet.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var action in Model.Agent.RecentActions)
+                            {
+                                <tr>
+                                    <td>@action.CreatedUtc.ToLocalTime().ToString("g")</td>
+                                    <td>@action.CapabilityKey</td>
+                                    <td>@action.ActionKey</td>
+                                    <td>@(action.TargetKey ?? "-")</td>
+                                    <td><span class="state-pill">@action.Status</span></td>
+                                    <td>@(action.ResultMessage ?? action.ErrorMessage ?? "-")</td>
+                                </tr>
+                            }
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </article>
         </section>
     </div>
 }

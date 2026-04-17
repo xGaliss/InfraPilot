@@ -1,5 +1,18 @@
 namespace InfraPilot.Contracts.Iis;
 
-public sealed record IisSnapshotDto(
-    IReadOnlyList<IisAppPoolDto> AppPools,
-    IReadOnlyList<IisSiteDto> Sites);
+public sealed class IisSnapshotDto
+{
+    public IReadOnlyList<IisAppPoolDto> AppPools { get; init; } = [];
+
+    public IReadOnlyList<IisSiteDto> Sites { get; init; } = [];
+
+    public IisSnapshotDto()
+    {
+    }
+
+    public IisSnapshotDto(IReadOnlyList<IisAppPoolDto> appPools, IReadOnlyList<IisSiteDto> sites)
+    {
+        AppPools = appPools ?? [];
+        Sites = sites ?? [];
+    }
+}

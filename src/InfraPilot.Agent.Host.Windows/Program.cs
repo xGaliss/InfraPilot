@@ -12,10 +12,10 @@ builder.Services.AddWindowsService(options =>
 });
 
 builder.Services.AddInfraPilotAgentCore(builder.Configuration);
-builder.Services.AddWindowsServicesCapability();
-builder.Services.AddWindowsScheduledTasksCapability();
+builder.Services.AddWindowsServicesCapability(builder.Configuration);
+builder.Services.AddWindowsScheduledTasksCapability(builder.Configuration);
 builder.Services.AddWindowsFileTreeCapability(builder.Configuration);
-builder.Services.AddWindowsIisCapability();
+builder.Services.AddWindowsIisCapability(builder.Configuration);
 
 var host = builder.Build();
 await host.RunAsync();

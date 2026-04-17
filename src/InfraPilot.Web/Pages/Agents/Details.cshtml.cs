@@ -4,6 +4,9 @@ using System.Text.Json;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
 using InfraPilot.Contracts.Capabilities;
+using InfraPilot.Contracts.FileTree;
+using InfraPilot.Contracts.Iis;
+using InfraPilot.Contracts.ScheduledTasks;
 using InfraPilot.Contracts.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -19,7 +22,13 @@ public sealed class DetailsModel : PageModel
 
     public AgentDetailDto? Agent { get; private set; }
 
-    public ServiceSnapshotDto? ServicesSnapshot { get; private set; }
+    public ServiceSnapshotDto ServicesSnapshot { get; private set; } = new();
+
+    public ScheduledTaskSnapshotDto ScheduledTasksSnapshot { get; private set; } = new();
+
+    public IisSnapshotDto IisSnapshot { get; private set; } = new();
+
+    public FileTreeSnapshotDto FileTreeSnapshot { get; private set; } = new();
 
     public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -61,13 +70,58 @@ public sealed class DetailsModel : PageModel
             return;
         }
 
-        var servicesCapability = Agent.Capabilities.FirstOrDefault(capability =>
-            string.Equals(capability.Descriptor.CapabilityKey, CapabilityKeys.Services, StringComparison.OrdinalIgnoreCase));
-
-        if (!string.IsNullOrWhiteSpace(servicesCapability?.LatestPayloadJson))
+        foreach (var capability in Agent.Capabilities)
         {
-            ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(servicesCapability.LatestPayloadJson)
-                ?? new ServiceSnapshotDto();
+            if (string.IsNullOrWhiteSpace(capability.LatestPayloadJson))
+            {
+                continue;
+            }
+
+            switch (capability.Descriptor.CapabilityKey)
+            {
+                case CapabilityKeys.Services:
+                    ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(capability.LatestPayloadJson)
+                        ?? new ServiceSnapshotDto();
+                    break;
+
+                case CapabilityKeys.ScheduledTasks:
+                    ScheduledTasksSnapshot = JsonSerializer.Deserialize<ScheduledTaskSnapshotDto>(capability.LatestPayloadJson)
+                        ?? new ScheduledTaskSnapshotDto();
+                    break;
+
+                case CapabilityKeys.Iis:
+                    IisSnapshot = JsonSerializer.Deserialize<IisSnapshotDto>(capability.LatestPayloadJson)
+                        ?? new IisSnapshotDto();
+                    break;
+
+                case CapabilityKeys.FileTree:
+                    FileTreeSnapshot = JsonSerializer.Deserialize<FileTreeSnapshotDto>(capability.LatestPayloadJson)
+                        ?? new FileTreeSnapshotDto();
+                    break;
+            }
         }
     }
+
+    public IReadOnlyList<FileTreeRowViewModel> BuildFileTreeRows(IReadOnlyList<FileTreeNodeDto>? nodes)
+    {
+        var rows = new List<FileTreeRowViewModel>();
+        Flatten(rows, nodes ?? [], 0);
+        return rows;
+    }
+
+    private static void Flatten(ICollection<FileTreeRowViewModel> rows, IReadOnlyList<FileTreeNodeDto> nodes, int depth)
+    {
+        foreach (var node in nodes)
+        {
+            rows.Add(new FileTreeRowViewModel(node.Name, node.FullPath, node.IsDirectory, depth, node.SizeBytes));
+            Flatten(rows, node.Children ?? [], depth + 1);
+        }
+    }
+
+    public sealed record FileTreeRowViewModel(
+        string Name,
+        string FullPath,
+        bool IsDirectory,
+        int Depth,
+        long? SizeBytes);
 }

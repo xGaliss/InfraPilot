@@ -1,5 +1,18 @@
 namespace InfraPilot.Contracts.FileTree;
 
-public sealed record FileTreeRootDto(
-    string RootPath,
-    IReadOnlyList<FileTreeNodeDto> Nodes);
+public sealed class FileTreeRootDto
+{
+    public string RootPath { get; init; } = string.Empty;
+
+    public IReadOnlyList<FileTreeNodeDto> Nodes { get; init; } = [];
+
+    public FileTreeRootDto()
+    {
+    }
+
+    public FileTreeRootDto(string rootPath, IReadOnlyList<FileTreeNodeDto> nodes)
+    {
+        RootPath = rootPath;
+        Nodes = nodes ?? [];
+    }
+}

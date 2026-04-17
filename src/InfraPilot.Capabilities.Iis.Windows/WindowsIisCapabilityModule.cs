@@ -4,10 +4,13 @@ using InfraPilot.Capabilities.Abstractions;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Capabilities;
 using InfraPilot.Contracts.Iis;
+using Microsoft.Extensions.Options;
 using Microsoft.Web.Administration;
 
 public sealed class WindowsIisCapabilityModule : ICapabilityModule
 {
+    private readonly IisCapabilityOptions _options;
+
     private static readonly CapabilityDescriptorDto Descriptor = new(
         CapabilityKeys.Iis,
         "IIS",
@@ -20,6 +23,11 @@ public sealed class WindowsIisCapabilityModule : ICapabilityModule
             new CapabilityActionDefinitionDto("site.stop", "Stop site", true)
         ]);
 
+    public WindowsIisCapabilityModule(IOptions<IisCapabilityOptions> options)
+    {
+        _options = options.Value;
+    }
+
     public CapabilityDescriptorDto Describe() => Descriptor;
 
     public Task<CapabilitySnapshotResult> CollectSnapshotAsync(CancellationToken cancellationToken)
@@ -28,11 +36,13 @@ public sealed class WindowsIisCapabilityModule : ICapabilityModule
         {
             using var serverManager = new ServerManager();
             var appPools = serverManager.ApplicationPools
+                .Where(pool => CapabilityFilter.Matches(pool.Name, _options.IncludeAppPools, _options.ExcludeAppPools))
                 .Select(pool => new IisAppPoolDto(pool.Name, pool.State.ToString()))
                 .OrderBy(pool => pool.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             var sites = serverManager.Sites
+                .Where(site => CapabilityFilter.Matches(site.Name, _options.IncludeSites, _options.ExcludeSites))
                 .Select(site => new IisSiteDto(
                     site.Name,
                     site.State.ToString(),

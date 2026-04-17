@@ -6,9 +6,12 @@ using InfraPilot.Capabilities.Abstractions;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Capabilities;
 using InfraPilot.Contracts.ScheduledTasks;
+using Microsoft.Extensions.Options;
 
 public sealed class WindowsScheduledTasksCapabilityModule : ICapabilityModule
 {
+    private readonly ScheduledTasksCapabilityOptions _options;
+
     private static readonly CapabilityDescriptorDto Descriptor = new(
         CapabilityKeys.ScheduledTasks,
         "Scheduled Tasks",
@@ -16,6 +19,11 @@ public sealed class WindowsScheduledTasksCapabilityModule : ICapabilityModule
         [
             new CapabilityActionDefinitionDto("run", "Run task", true, "Runs a scheduled task immediately.")
         ]);
+
+    public WindowsScheduledTasksCapabilityModule(IOptions<ScheduledTasksCapabilityOptions> options)
+    {
+        _options = options.Value;
+    }
 
     public CapabilityDescriptorDto Describe() => Descriptor;
 
@@ -33,10 +41,17 @@ public sealed class WindowsScheduledTasksCapabilityModule : ICapabilityModule
             }
 
             var (path, name) = SplitTaskNameAndPath(fullName);
+            var fullPath = $"{path}{name}";
+
+            if (!CapabilityFilter.Matches(fullPath, _options.IncludePaths, _options.ExcludePaths))
+            {
+                continue;
+            }
+
             tasks.Add(new ScheduledTaskInfoDto(
                 name,
                 path,
-                First(row, "Status", "Estado"),
+                First(row, "Status", "Estado") ?? string.Empty,
                 First(row, "Author", "Autor"),
                 First(row, "Run As User", "Ejecutar como usuario"),
                 First(row, "Last Run Time", "Hora de la ultima ejecucion"),
