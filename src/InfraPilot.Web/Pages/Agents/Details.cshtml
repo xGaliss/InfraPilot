@@ -39,6 +39,8 @@ else
 
                     @if (capability.Descriptor.CapabilityKey == "services" && Model.ServicesSnapshot is not null)
                     {
+                        var services = Model.ServicesSnapshot.Services ?? [];
+
                         <table class="table">
                             <thead>
                                 <tr>
@@ -48,7 +50,7 @@ else
                                 </tr>
                             </thead>
                             <tbody>
-                            @foreach (var service in Model.ServicesSnapshot.Services.Take(50))
+                            @foreach (var service in services.Take(50))
                             {
                                 <tr>
                                     <td>@service.DisplayName <span class="muted">(@service.ServiceName)</span></td>

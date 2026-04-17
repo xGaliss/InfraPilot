@@ -66,7 +66,8 @@ public sealed class DetailsModel : PageModel
 
         if (!string.IsNullOrWhiteSpace(servicesCapability?.LatestPayloadJson))
         {
-            ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(servicesCapability.LatestPayloadJson);
+            ServicesSnapshot = JsonSerializer.Deserialize<ServiceSnapshotDto>(servicesCapability.LatestPayloadJson)
+                ?? new ServiceSnapshotDto();
         }
     }
 }
