@@ -14,6 +14,14 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 public sealed class DetailsModel : PageModel
 {
+    public const string OverviewSection = "overview";
+    public const string ServicesSection = "services";
+    public const string TasksSection = "tasks";
+    public const string IisSection = "iis";
+    public const string FileTreeSection = "fileTree";
+    public const string UsersAndGroupsSection = "usersAndGroups";
+    public const string ActionsSection = "actions";
+
     private static readonly JsonSerializerOptions SnapshotJsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -27,6 +35,8 @@ public sealed class DetailsModel : PageModel
     }
 
     public AgentDetailDto? Agent { get; private set; }
+
+    public string SelectedSection { get; private set; } = OverviewSection;
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -44,18 +54,19 @@ public sealed class DetailsModel : PageModel
 
     public UsersAndGroupsSnapshotDto UsersAndGroupsSnapshot { get; private set; } = new();
 
-    public async Task<IActionResult> OnGetAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(Guid id, string? section, CancellationToken cancellationToken)
     {
+        SelectedSection = NormalizeSection(section);
         await LoadAsync(id, cancellationToken);
         return Page();
     }
 
-    public async Task<IActionResult> OnPostApproveAsync(Guid agentId, string? activeTab, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostApproveAsync(Guid agentId, string? section, CancellationToken cancellationToken)
     {
         await _centralApiClient.ApproveAgentAsync(agentId, cancellationToken);
         StatusTone = "success";
         StatusMessage = "Agent approved. It can now publish snapshots and receive actions.";
-        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { id = agentId }, fragment: activeTab);
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
     }
 
     public async Task<IActionResult> OnPostQueueActionAsync(
@@ -63,7 +74,7 @@ public sealed class DetailsModel : PageModel
         string capabilityKey,
         string actionKey,
         string? targetKey,
-        string? activeTab,
+        string? section,
         CancellationToken cancellationToken)
     {
         try
@@ -87,7 +98,7 @@ public sealed class DetailsModel : PageModel
             StatusMessage = $"The action could not be queued. {exception.Message}";
         }
 
-        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { id = agentId }, fragment: activeTab);
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
     }
 
     private async Task LoadAsync(Guid id, CancellationToken cancellationToken)
@@ -157,4 +168,28 @@ public sealed class DetailsModel : PageModel
         bool IsDirectory,
         int Depth,
         long? SizeBytes);
+
+    private static object BuildRouteValues(Guid agentId, string? section)
+    {
+        var normalizedSection = NormalizeSection(section);
+        return new
+        {
+            id = agentId,
+            section = string.Equals(normalizedSection, OverviewSection, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : normalizedSection
+        };
+    }
+
+    private static string NormalizeSection(string? section)
+        => section switch
+        {
+            ServicesSection => ServicesSection,
+            TasksSection => TasksSection,
+            IisSection => IisSection,
+            FileTreeSection => FileTreeSection,
+            UsersAndGroupsSection => UsersAndGroupsSection,
+            ActionsSection => ActionsSection,
+            _ => OverviewSection
+        };
 }

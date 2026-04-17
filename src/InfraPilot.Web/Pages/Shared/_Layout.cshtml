@@ -11,16 +11,13 @@
 </head>
 @{
     var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? string.Empty;
-    var currentTitle = ViewData["Title"]?.ToString() ?? "InfraPilot";
     var isFleetPage = string.Equals(currentPage, "/Index", StringComparison.OrdinalIgnoreCase);
-    var isAgentDetailPage = string.Equals(currentPage, "/Agents/Details", StringComparison.OrdinalIgnoreCase);
-    var currentWorkspaceHref = $"{Context.Request.Path}{Context.Request.QueryString}";
 }
 <body>
-    <div class="workspace-shell">
-        <aside class="sidebar-shell">
-            <div class="sidebar-inner">
-                <div class="brand-block sidebar-brand-block">
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="app-header-inner">
+                <div class="brand-block">
                     <a class="brand-mark" asp-area="" asp-page="/Index">IP</a>
                     <div>
                         <a class="brand-name" asp-area="" asp-page="/Index">InfraPilot</a>
@@ -28,58 +25,24 @@
                     </div>
                 </div>
 
-                <nav class="sidebar-nav">
-                    <div class="sidebar-section-label">Control Plane</div>
-                    <a class="sidebar-link @(isFleetPage ? "active" : null)" asp-area="" asp-page="/Index">
-                        <span class="sidebar-link-title">Fleet</span>
-                        <span class="sidebar-link-meta">Agents, health and posture</span>
-                    </a>
-
-                    @if (isAgentDetailPage)
-                    {
-                        <div class="sidebar-section-label">Current Workspace</div>
-                        <a class="sidebar-link active" href="@currentWorkspaceHref">
-                            <span class="sidebar-link-title">Agent Workspace</span>
-                            <span class="sidebar-link-meta">Capabilities, changes and actions</span>
-                        </a>
-                    }
+                <nav class="top-nav">
+                    <a class="top-nav-link @(isFleetPage ? "active" : null)" asp-area="" asp-page="/Index">Fleet</a>
                 </nav>
-
-                <section class="sidebar-panel">
-                    <span class="sidebar-panel-label">Environment</span>
-                    <strong>Windows MVP</strong>
-                    <p>Pull-based orchestration with a central API and web console.</p>
-                </section>
             </div>
-        </aside>
+        </header>
 
-        <div class="workspace-main">
-            <header class="content-topbar">
-                <div class="content-topbar-inner">
-                    <div>
-                        <p class="eyebrow">InfraPilot Console</p>
-                        <div class="content-topbar-title">@currentTitle</div>
-                    </div>
-                    <div class="content-topbar-meta">
-                        <span class="timestamp-chip">Pull model</span>
-                        <span class="timestamp-chip">Windows agents</span>
-                    </div>
-                </div>
-            </header>
-
-            <div class="app-canvas">
-                <main role="main" class="page-content">
-                    @RenderBody()
-                </main>
-            </div>
-
-            <footer class="app-footer">
-                <div class="footer-content">
-                    <span>InfraPilot control plane</span>
-                    <span>Pull-based orchestration for Windows agents</span>
-                </div>
-            </footer>
+        <div class="app-canvas">
+            <main role="main" class="page-content">
+                @RenderBody()
+            </main>
         </div>
+
+        <footer class="app-footer">
+            <div class="footer-content">
+                <span>InfraPilot control plane</span>
+                <span>Pull-based orchestration for Windows agents</span>
+            </div>
+        </footer>
     </div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
