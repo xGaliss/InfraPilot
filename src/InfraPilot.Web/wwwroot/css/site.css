@@ -472,6 +472,11 @@ a {
   gap: 0.8rem;
 }
 
+.history-item-title {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .activity-title {
   margin: 0;
   font-size: 1rem;

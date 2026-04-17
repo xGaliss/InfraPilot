@@ -1,28 +1,42 @@
 @using InfraPilot.Contracts.Capabilities
 @model IReadOnlyList<CapabilitySnapshotHistoryItemDto>
 
+@{
+    var changedSnapshots = Model
+        .Where(item => item.ChangeSummary.HasChanges)
+        .OrderByDescending(item => item.CollectedUtc)
+        .ToList();
+}
+
 <section class="history-shell">
     <div class="section-heading compact-heading">
         <div>
-            <p class="eyebrow">Snapshot History</p>
-            <h2>Recent captures</h2>
+            <p class="eyebrow">History</p>
+            <h2>Changed captures</h2>
         </div>
     </div>
 
-    @if (Model.Count == 0)
+    @if (changedSnapshots.Count == 0)
     {
-        <p class="empty-state">No history has been captured for this capability yet.</p>
+        <p class="empty-state">No changed snapshots have been recorded for this capability yet.</p>
     }
     else
     {
         <div class="history-list">
-            @foreach (var item in Model)
+            @foreach (var item in changedSnapshots)
             {
                 <article class="history-item">
                     <div class="history-item-head">
-                        <strong>@item.CollectedUtc.ToLocalTime().ToString("g")</strong>
-                        <span class="timestamp-chip">@item.ChangeSummary.Summary</span>
+                        <div class="history-item-title">
+                            <strong>@item.CollectedUtc.ToLocalTime().ToString("g")</strong>
+                            <span class="muted">
+                                Compared with @(item.ChangeSummary.PreviousCollectedUtc?.ToLocalTime().ToString("g") ?? "the previous snapshot")
+                            </span>
+                        </div>
+                        <span class="timestamp-chip">Changed</span>
                     </div>
+
+                    <p class="capability-preview">@item.ChangeSummary.Summary</p>
 
                     @if (item.ChangeSummary.Highlights.Count > 0)
                     {
