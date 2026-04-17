@@ -47,12 +47,12 @@ public sealed class DetailsModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostApproveAsync(Guid agentId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostApproveAsync(Guid agentId, string? activeTab, CancellationToken cancellationToken)
     {
         await _centralApiClient.ApproveAgentAsync(agentId, cancellationToken);
         StatusTone = "success";
         StatusMessage = "Agent approved. It can now publish snapshots and receive actions.";
-        return RedirectToPage(new { id = agentId });
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { id = agentId }, fragment: activeTab);
     }
 
     public async Task<IActionResult> OnPostQueueActionAsync(
@@ -60,6 +60,7 @@ public sealed class DetailsModel : PageModel
         string capabilityKey,
         string actionKey,
         string? targetKey,
+        string? activeTab,
         CancellationToken cancellationToken)
     {
         try
@@ -83,7 +84,7 @@ public sealed class DetailsModel : PageModel
             StatusMessage = $"The action could not be queued. {exception.Message}";
         }
 
-        return RedirectToPage(new { id = agentId });
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { id = agentId }, fragment: activeTab);
     }
 
     private async Task LoadAsync(Guid id, CancellationToken cancellationToken)

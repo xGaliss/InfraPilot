@@ -261,6 +261,11 @@ a {
   gap: 1rem;
 }
 
+.agent-tabs-shell {
+  display: grid;
+  gap: 1rem;
+}
+
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -282,6 +287,98 @@ a {
   border: 1px solid rgba(217, 209, 197, 0.95);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.82);
+}
+
+.agent-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.agent-tab-button {
+  border: 1px solid rgba(211, 202, 189, 0.95) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--ink-soft) !important;
+  border-radius: 999px !important;
+  padding: 0.7rem 1rem !important;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.agent-tab-button.active {
+  background: linear-gradient(135deg, var(--brand-deep) 0%, var(--brand) 100%) !important;
+  color: #f7fffd !important;
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.2);
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.08);
+  color: inherit;
+  font-size: 0.78rem;
+}
+
+.agent-tab-button.active .tab-count {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.tab-content-shell {
+  display: grid;
+}
+
+.tab-content-shell > .tab-pane {
+  display: none;
+}
+
+.tab-content-shell > .active {
+  display: block;
+}
+
+.tab-panel-body {
+  display: grid;
+  gap: 1rem;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.overview-card {
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 219, 208, 0.98);
+  background: rgba(249, 247, 241, 0.85);
+}
+
+.overview-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.overview-card-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.compact-heading h2 {
+  font-size: 1.35rem;
 }
 
 .filter-input,
@@ -493,6 +590,13 @@ a {
   margin-top: 0.75rem;
 }
 
+.hero-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 0.75rem;
+}
+
 .flash-banner {
   padding: 0.95rem 1.15rem;
   border-radius: 1rem;
@@ -654,6 +758,10 @@ a {
   .agent-card,
   .capability-card {
     padding: 1.1rem;
+  }
+
+  .hero-actions {
+    align-items: stretch;
   }
 
   .table,
