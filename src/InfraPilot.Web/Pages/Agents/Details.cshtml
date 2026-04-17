@@ -1,5 +1,6 @@
 @page "{id:guid}"
 @using InfraPilot.Contracts.Capabilities
+@using InfraPilot.Contracts.FileTree
 @model InfraPilot.Web.Pages.Agents.DetailsModel
 @{
     ViewData["Title"] = "Agent Detail";
@@ -382,15 +383,8 @@ else
                                                 }
                                                 else
                                                 {
-                                                    <div class="tree-list">
-                                                        @foreach (var row in rows.Take(120))
-                                                        {
-                                                            <div class="tree-row" style="padding-left:@(row.Depth * 18)px">
-                                                                <span class="tree-kind">@(row.IsDirectory ? "DIR" : "FILE")</span>
-                                                                <span class="tree-name">@row.Name</span>
-                                                                <span class="tree-meta">@row.FullPath</span>
-                                                            </div>
-                                                        }
+                                                    <div class="tree-browser">
+                                                        <partial name="_FileTreeNodes" model="root.Nodes" />
                                                     </div>
                                                 }
                                             </section>

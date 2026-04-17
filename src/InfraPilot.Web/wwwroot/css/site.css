@@ -678,6 +678,70 @@ a {
   gap: 0.3rem;
 }
 
+.tree-browser,
+.tree-branch-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tree-folder {
+  border: 1px solid rgba(224, 217, 206, 0.98);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.tree-folder[open] {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(36, 31, 22, 0.04);
+}
+
+.tree-folder-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.85rem;
+}
+
+.tree-folder-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree-folder-namewrap {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.tree-folder-title {
+  font-weight: 700;
+  color: #222831;
+}
+
+.tree-folder-children {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0 0.65rem 0.65rem 1.15rem;
+  border-top: 1px solid rgba(229, 223, 214, 0.98);
+}
+
+.tree-folder-empty {
+  padding: 0.7rem 1rem 0.9rem;
+  color: var(--ink-soft);
+}
+
+.tree-file {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(224, 217, 206, 0.92);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
 .tree-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

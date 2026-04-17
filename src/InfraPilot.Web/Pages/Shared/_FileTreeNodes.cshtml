@@ -1,0 +1,42 @@
+@model IReadOnlyList<InfraPilot.Contracts.FileTree.FileTreeNodeDto>
+
+<div class="tree-branch-list">
+@foreach (var node in Model)
+{
+    if (node.IsDirectory)
+    {
+        <details class="tree-folder">
+            <summary class="tree-folder-summary">
+                <span class="tree-kind">DIR</span>
+                <span class="tree-folder-namewrap">
+                    <span class="tree-folder-title">@node.Name</span>
+                    <span class="tree-folder-meta">@node.FullPath</span>
+                </span>
+                <span class="timestamp-chip">@node.Children.Count items</span>
+            </summary>
+
+            @if (node.Children.Count == 0)
+            {
+                <div class="tree-folder-empty">This folder is empty at the captured depth.</div>
+            }
+            else
+            {
+                <div class="tree-folder-children">
+                    <partial name="_FileTreeNodes" model="node.Children" />
+                </div>
+            }
+        </details>
+    }
+    else
+    {
+        <div class="tree-file">
+            <span class="tree-kind">FILE</span>
+            <span class="tree-folder-namewrap">
+                <span class="tree-folder-title">@node.Name</span>
+                <span class="tree-folder-meta">@node.FullPath</span>
+            </span>
+            <span class="timestamp-chip">@(node.SizeBytes is null ? "-" : $"{node.SizeBytes.Value:N0} B")</span>
+        </div>
+    }
+}
+</div>
