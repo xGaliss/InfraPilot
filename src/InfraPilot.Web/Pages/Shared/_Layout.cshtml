@@ -10,31 +10,38 @@
     <link rel="stylesheet" href="~/InfraPilot.Web.styles.css" asp-append-version="true" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" asp-area="" asp-page="/Index">InfraPilot</a>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between show">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Index">Agents</a>
-                        </li>
-                    </ul>
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="container shell-container">
+                <div class="brand-block">
+                    <a class="brand-mark" asp-area="" asp-page="/Index">IP</a>
+                    <div>
+                        <a class="brand-name" asp-area="" asp-page="/Index">InfraPilot</a>
+                        <div class="brand-tagline">Agent-first server operations</div>
+                    </div>
                 </div>
-            </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            InfraPilot MVP control plane
+                <nav class="top-nav">
+                    <a class="top-nav-link" asp-area="" asp-page="/Index">Fleet</a>
+                </nav>
+            </div>
+        </header>
+
+        <div class="app-canvas">
+            <div class="container shell-container">
+                <main role="main" class="page-content">
+                    @RenderBody()
+                </main>
+            </div>
         </div>
-    </footer>
+
+        <footer class="app-footer">
+            <div class="container shell-container footer-content">
+                <span>InfraPilot control plane</span>
+                <span>Pull-based orchestration for Windows agents</span>
+            </div>
+        </footer>
+    </div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>

@@ -20,7 +20,9 @@ public interface ICentralStore
 
     Task<AgentActionCommandDto?> LeaseNextActionAsync(Guid agentId, TimeSpan leaseDuration, CancellationToken cancellationToken);
 
-    Task CompleteActionAsync(Guid agentId, Guid actionId, AgentActionResultReportDto result, CancellationToken cancellationToken);
+    Task<bool> CompleteActionAsync(Guid agentId, Guid actionId, AgentActionResultReportDto result, CancellationToken cancellationToken);
+
+    Task<bool> HasQueuedActionAsync(Guid agentId, string capabilityKey, string actionKey, string? targetKey, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<AgentListItemDto>> GetAgentsAsync(CancellationToken cancellationToken);
 

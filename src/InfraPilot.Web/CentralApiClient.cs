@@ -31,7 +31,15 @@ public sealed class CentralApiClient
     public async Task<ActionCommandSummaryDto> CreateActionAsync(ActionCommandCreateRequestDto request, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.PostAsJsonAsync("api/actions", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"Central API rejected the action request with {(int)response.StatusCode}: {body}",
+                null,
+                response.StatusCode);
+        }
+
         return await response.Content.ReadFromJsonAsync<ActionCommandSummaryDto>(cancellationToken: cancellationToken)
                ?? throw new InvalidOperationException("The central API returned an empty action payload.");
     }

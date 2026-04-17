@@ -167,6 +167,10 @@ app.MapPost("/api/actions/{actionId:guid}/result", async (
     {
         return Results.Unauthorized();
     }
+    catch (InvalidOperationException exception)
+    {
+        return Results.Conflict(new { error = exception.Message });
+    }
 });
 
 app.MapGet("/api/agents", async (CentralService centralService, CancellationToken cancellationToken)

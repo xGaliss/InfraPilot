@@ -27,6 +27,12 @@ public sealed class DetailsModel : PageModel
 
     public AgentDetailDto? Agent { get; private set; }
 
+    [TempData]
+    public string? StatusMessage { get; set; }
+
+    [TempData]
+    public string? StatusTone { get; set; }
+
     public ServiceSnapshotDto ServicesSnapshot { get; private set; } = new();
 
     public ScheduledTaskSnapshotDto ScheduledTasksSnapshot { get; private set; } = new();
@@ -44,6 +50,8 @@ public sealed class DetailsModel : PageModel
     public async Task<IActionResult> OnPostApproveAsync(Guid agentId, CancellationToken cancellationToken)
     {
         await _centralApiClient.ApproveAgentAsync(agentId, cancellationToken);
+        StatusTone = "success";
+        StatusMessage = "Agent approved. It can now publish snapshots and receive actions.";
         return RedirectToPage(new { id = agentId });
     }
 
@@ -54,15 +62,26 @@ public sealed class DetailsModel : PageModel
         string? targetKey,
         CancellationToken cancellationToken)
     {
-        await _centralApiClient.CreateActionAsync(
-            new ActionCommandCreateRequestDto(
-                agentId,
-                capabilityKey,
-                actionKey,
-                targetKey,
-                null,
-                "WebUI"),
-            cancellationToken);
+        try
+        {
+            var action = await _centralApiClient.CreateActionAsync(
+                new ActionCommandCreateRequestDto(
+                    agentId,
+                    capabilityKey,
+                    actionKey,
+                    targetKey,
+                    null,
+                    "WebUI"),
+                cancellationToken);
+
+            StatusTone = "success";
+            StatusMessage = $"Queued {action.ActionKey} on {action.TargetKey ?? action.CapabilityKey}.";
+        }
+        catch (HttpRequestException exception)
+        {
+            StatusTone = "error";
+            StatusMessage = $"The action could not be queued. {exception.Message}";
+        }
 
         return RedirectToPage(new { id = agentId });
     }

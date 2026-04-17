@@ -1,40 +1,147 @@
 @page
+@using InfraPilot.Contracts.Common
 @model InfraPilot.Web.Pages.IndexModel
 @{
-    ViewData["Title"] = "Agents";
+    ViewData["Title"] = "Control Plane";
 }
 
-<div class="space-y-3">
-    <div>
-        <h1>InfraPilot Agents</h1>
-        <p>Central view of enrolled agents and their published capabilities.</p>
-    </div>
+<div class="dashboard-shell">
+    <section class="dashboard-hero">
+        <div class="hero-copy">
+            <p class="eyebrow">Control Plane</p>
+            <h1>Operate your server fleet from one calm place.</h1>
+            <p class="hero-body">
+                InfraPilot keeps enrollment, capability snapshots and remote actions in a single operational view.
+                You can spot stale agents, inspect their published surface and queue actions without touching the servers directly.
+            </p>
+        </div>
 
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Machine</th>
-                <th>Status</th>
-                <th>Version</th>
-                <th>Last Seen</th>
-                <th>Capabilities</th>
-                <th>Last Action</th>
-            </tr>
-        </thead>
-        <tbody>
-        @foreach (var agent in Model.Agents)
+        <div class="hero-highlight">
+            <span class="highlight-label">Live posture</span>
+            <strong>@Model.HealthyCount healthy / @Model.Agents.Count total</strong>
+            <p>@Model.ActiveActionCount queued or running actions across the fleet.</p>
+        </div>
+    </section>
+
+    <section class="summary-grid">
+        <article class="summary-card">
+            <span class="summary-label">Healthy</span>
+            <strong>@Model.HealthyCount</strong>
+        </article>
+        <article class="summary-card">
+            <span class="summary-label">Delayed</span>
+            <strong>@Model.DelayedCount</strong>
+        </article>
+        <article class="summary-card">
+            <span class="summary-label">Offline</span>
+            <strong>@Model.OfflineCount</strong>
+        </article>
+        <article class="summary-card">
+            <span class="summary-label">Needs Approval</span>
+            <strong>@Model.NeedsApprovalCount</strong>
+        </article>
+        <article class="summary-card">
+            <span class="summary-label">Actions In Flight</span>
+            <strong>@Model.ActiveActionCount</strong>
+        </article>
+    </section>
+
+    <section class="fleet-toolbar">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Fleet</p>
+                <h2>Agents</h2>
+            </div>
+        </div>
+
+        <form method="get" class="filter-form">
+            <input type="search" name="search" value="@Model.Search" class="filter-input" placeholder="Search by name, machine, capability or installation id" />
+
+            <select name="health" class="filter-select">
+                <option value="">All health states</option>
+                <option value="@AgentHealthStatuses.Healthy" selected="@(Model.Health == AgentHealthStatuses.Healthy ? "selected" : null)">Healthy</option>
+                <option value="@AgentHealthStatuses.Delayed" selected="@(Model.Health == AgentHealthStatuses.Delayed ? "selected" : null)">Delayed</option>
+                <option value="@AgentHealthStatuses.Offline" selected="@(Model.Health == AgentHealthStatuses.Offline ? "selected" : null)">Offline</option>
+                <option value="@AgentHealthStatuses.NeedsApproval" selected="@(Model.Health == AgentHealthStatuses.NeedsApproval ? "selected" : null)">Needs approval</option>
+                <option value="@AgentHealthStatuses.Revoked" selected="@(Model.Health == AgentHealthStatuses.Revoked ? "selected" : null)">Revoked</option>
+            </select>
+
+            <select name="status" class="filter-select">
+                <option value="">All enrollment states</option>
+                <option value="@AgentStatuses.Approved" selected="@(Model.Status == AgentStatuses.Approved ? "selected" : null)">Approved</option>
+                <option value="@AgentStatuses.Pending" selected="@(Model.Status == AgentStatuses.Pending ? "selected" : null)">Pending</option>
+                <option value="@AgentStatuses.Revoked" selected="@(Model.Status == AgentStatuses.Revoked ? "selected" : null)">Revoked</option>
+            </select>
+
+            <button type="submit" class="btn btn-primary">Apply</button>
+            <a asp-page="/Index" class="btn btn-outline-secondary">Reset</a>
+        </form>
+
+        @if (Model.FilteredAgents.Count == 0)
         {
-            <tr>
-                <td><a asp-page="/Agents/Details" asp-route-id="@agent.AgentId">@agent.DisplayName</a></td>
-                <td>@agent.MachineName</td>
-                <td>@agent.Status</td>
-                <td>@agent.AgentVersion</td>
-                <td>@(agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</td>
-                <td>@string.Join(", ", agent.CapabilityKeys)</td>
-                <td>@(agent.LastActionStatus is null ? "-" : $"{agent.LastActionStatus}: {agent.LastActionSummary}")</td>
-            </tr>
+            <article class="capability-card polished">
+                <p class="empty-state">No agents matched the current filters.</p>
+            </article>
         }
-        </tbody>
-    </table>
+        else
+        {
+            <div class="agent-grid">
+                @foreach (var agent in Model.FilteredAgents)
+                {
+                    var capabilities = agent.CapabilityKeys.Take(5).ToList();
+                    var actionCount = agent.PendingActionCount + agent.InProgressActionCount;
+
+                    <article class="agent-card">
+                        <div class="agent-card-top">
+                            <div>
+                                <div class="card-title-row">
+                                    <h3>@agent.DisplayName</h3>
+                                    <span class="status-chip @Model.GetHealthClass(agent.HealthStatus)">@agent.HealthStatus</span>
+                                </div>
+                                <p class="agent-meta">@agent.MachineName · @agent.AgentVersion · @agent.Status</p>
+                            </div>
+
+                            <a asp-page="/Agents/Details" asp-route-id="@agent.AgentId" class="btn btn-sm btn-dark-soft">Open</a>
+                        </div>
+
+                        <div class="agent-metrics">
+                            <div>
+                                <span class="metric-label">Last heartbeat</span>
+                                <strong>@(agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</strong>
+                            </div>
+                            <div>
+                                <span class="metric-label">Last snapshot</span>
+                                <strong>@(agent.LastCollectedUtc?.ToLocalTime().ToString("g") ?? "-")</strong>
+                            </div>
+                            <div>
+                                <span class="metric-label">Active actions</span>
+                                <strong>@actionCount</strong>
+                            </div>
+                        </div>
+
+                        <div class="capability-badges">
+                            @foreach (var capability in capabilities)
+                            {
+                                <span class="capability-badge">@capability</span>
+                            }
+
+                            @if (agent.CapabilityKeys.Count > capabilities.Count)
+                            {
+                                <span class="capability-badge muted-badge">+@(agent.CapabilityKeys.Count - capabilities.Count)</span>
+                            }
+                        </div>
+
+                        <div class="agent-card-footer">
+                            <div class="action-stats">
+                                <span>Pending @agent.PendingActionCount</span>
+                                <span>Running @agent.InProgressActionCount</span>
+                                <span>Failed @agent.FailedActionCount</span>
+                            </div>
+                            <div class="last-action-line">@(agent.LastActionStatus is null ? "No actions yet." : $"{agent.LastActionStatus}: {agent.LastActionSummary}")</div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
 </div>

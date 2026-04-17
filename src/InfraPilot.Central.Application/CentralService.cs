@@ -126,7 +126,11 @@ public sealed class CentralService
         CancellationToken cancellationToken)
     {
         var agent = await GetAuthorizedAgentAsync(installationId, token, cancellationToken);
-        await _centralStore.CompleteActionAsync(agent.AgentId, actionId, result, cancellationToken);
+        var updated = await _centralStore.CompleteActionAsync(agent.AgentId, actionId, result, cancellationToken);
+        if (!updated)
+        {
+            throw new InvalidOperationException("The action result could not be applied because the command is not currently leased to this agent.");
+        }
     }
 
     public Task<IReadOnlyList<AgentListItemDto>> GetAgentsAsync(CancellationToken cancellationToken)
@@ -148,12 +152,55 @@ public sealed class CentralService
             throw new KeyNotFoundException("Agent not found.");
         }
 
+        if (!string.Equals(detail.Status, AgentStatuses.Approved, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Actions can only be queued for approved agents. Current status: {detail.Status}.");
+        }
+
         if (!detail.Capabilities.Any(capability => string.Equals(
                 capability.Descriptor.CapabilityKey,
                 request.CapabilityKey,
                 StringComparison.OrdinalIgnoreCase)))
         {
             throw new InvalidOperationException($"Agent does not publish capability '{request.CapabilityKey}'.");
+        }
+
+        var capability = detail.Capabilities.First(capability => string.Equals(
+            capability.Descriptor.CapabilityKey,
+            request.CapabilityKey,
+            StringComparison.OrdinalIgnoreCase));
+
+        var action = capability.Descriptor.Actions.FirstOrDefault(definedAction => string.Equals(
+            definedAction.ActionKey,
+            request.ActionKey,
+            StringComparison.OrdinalIgnoreCase));
+
+        if (action is null)
+        {
+            throw new InvalidOperationException(
+                $"Capability '{request.CapabilityKey}' does not expose an action named '{request.ActionKey}'.");
+        }
+
+        if (action.RequiresTarget && string.IsNullOrWhiteSpace(request.TargetKey))
+        {
+            throw new InvalidOperationException(
+                $"Action '{request.ActionKey}' on capability '{request.CapabilityKey}' requires a target.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RequestedBy))
+        {
+            throw new InvalidOperationException("RequestedBy is required.");
+        }
+
+        if (await _centralStore.HasQueuedActionAsync(
+                request.AgentId,
+                request.CapabilityKey,
+                request.ActionKey,
+                request.TargetKey,
+                cancellationToken))
+        {
+            throw new InvalidOperationException(
+                $"There is already a queued or running '{request.ActionKey}' action for '{request.TargetKey ?? request.CapabilityKey}'.");
         }
 
         return await _centralStore.CreateActionAsync(request, cancellationToken);

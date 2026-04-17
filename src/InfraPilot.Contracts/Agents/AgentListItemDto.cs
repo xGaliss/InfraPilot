@@ -6,10 +6,15 @@ public sealed record AgentListItemDto(
     string DisplayName,
     string MachineName,
     string Status,
+    string HealthStatus,
     string AgentVersion,
     DateTimeOffset CreatedUtc,
     DateTimeOffset? ApprovedUtc,
     DateTimeOffset? LastSeenUtc,
+    DateTimeOffset? LastCollectedUtc,
     IReadOnlyList<string> CapabilityKeys,
     string? LastActionStatus,
-    string? LastActionSummary);
+    string? LastActionSummary,
+    int PendingActionCount,
+    int InProgressActionCount,
+    int FailedActionCount);

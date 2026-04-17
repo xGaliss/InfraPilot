@@ -15,13 +15,35 @@ else
     var scheduledTasks = Model.ScheduledTasksSnapshot.Tasks ?? [];
     var appPools = Model.IisSnapshot.AppPools ?? [];
     var sites = Model.IisSnapshot.Sites ?? [];
+    var healthClass = Model.Agent.HealthStatus switch
+    {
+        "Healthy" => "health-good",
+        "Delayed" => "health-warn",
+        "Offline" => "health-bad",
+        "NeedsApproval" => "health-neutral",
+        "Revoked" => "health-bad",
+        _ => "health-neutral"
+    };
 
     <div class="agent-page">
+        @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+        {
+            <section class="flash-banner @(Model.StatusTone == "error" ? "flash-error" : "flash-success")">
+                @Model.StatusMessage
+            </section>
+        }
+
         <section class="hero-card">
             <div>
                 <p class="eyebrow">Agent Overview</p>
                 <h1>@Model.Agent.DisplayName</h1>
-                <p class="hero-meta">@Model.Agent.MachineName · @Model.Agent.Status · Last seen @(Model.Agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</p>
+                <div class="hero-meta-stack">
+                    <p class="hero-meta">@Model.Agent.MachineName · @Model.Agent.Status · Last seen @(Model.Agent.LastSeenUtc?.ToLocalTime().ToString("g") ?? "-")</p>
+                    <div class="hero-chip-row">
+                        <span class="status-chip @healthClass">@Model.Agent.HealthStatus</span>
+                        <span class="timestamp-chip">Last snapshot @(Model.Agent.LastCollectedUtc?.ToLocalTime().ToString("g") ?? "-")</span>
+                    </div>
+                </div>
             </div>
 
             @if (Model.Agent.Status == "Pending")
@@ -37,6 +59,18 @@ else
             <article class="summary-card">
                 <span class="summary-label">Capabilities</span>
                 <strong>@Model.Agent.Capabilities.Count</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Queued Actions</span>
+                <strong>@Model.Agent.PendingActionCount</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Running Actions</span>
+                <strong>@Model.Agent.InProgressActionCount</strong>
+            </article>
+            <article class="summary-card">
+                <span class="summary-label">Recent Failures</span>
+                <strong>@Model.Agent.FailedActionCount</strong>
             </article>
             <article class="summary-card">
                 <span class="summary-label">Services</span>
