@@ -153,8 +153,56 @@ public sealed class CentralService
         CancellationToken cancellationToken)
         => _centralStore.GetChangeFeedAsync(agentId, NormalizeTake(take, 10, 100), cancellationToken);
 
-    public Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
-        => _centralStore.ApproveAgentAsync(agentId, cancellationToken);
+    public async Task<AgentControlResultDto> ApproveAgentAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        EnsureRequestedBy(request);
+        var agent = await _centralStore.ApproveAgentAsync(agentId, cancellationToken)
+                    ?? throw new KeyNotFoundException("Agent not found.");
+
+        return BuildAgentControlResult(
+            agent,
+            "Approve",
+            string.IsNullOrWhiteSpace(request.Reason)
+                ? $"Approved by {request.RequestedBy}."
+                : $"Approved by {request.RequestedBy}. {request.Reason.Trim()}");
+    }
+
+    public async Task<AgentControlResultDto> RevokeAgentAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        EnsureRequestedBy(request);
+        var agent = await _centralStore.RevokeAgentAsync(agentId, cancellationToken)
+                    ?? throw new KeyNotFoundException("Agent not found.");
+
+        return BuildAgentControlResult(
+            agent,
+            "Revoke",
+            string.IsNullOrWhiteSpace(request.Reason)
+                ? $"Revoked by {request.RequestedBy}."
+                : $"Revoked by {request.RequestedBy}. {request.Reason.Trim()}");
+    }
+
+    public async Task<AgentControlResultDto> ResetAgentTokenAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        EnsureRequestedBy(request);
+        var agent = await _centralStore.ResetAgentTokenAsync(agentId, cancellationToken)
+                    ?? throw new KeyNotFoundException("Agent not found.");
+
+        return BuildAgentControlResult(
+            agent,
+            "ResetToken",
+            string.IsNullOrWhiteSpace(request.Reason)
+                ? $"Agent token rotated by {request.RequestedBy}. The agent will need to re-authenticate."
+                : $"Agent token rotated by {request.RequestedBy}. {request.Reason.Trim()}");
+    }
 
     public async Task<ActionCommandSummaryDto> CreateActionAsync(
         ActionCommandCreateRequestDto request,
@@ -240,6 +288,16 @@ public sealed class CentralService
                ?? throw new InvalidOperationException("Only pending actions can be cancelled.");
     }
 
+    public Task<RetentionCleanupResult> CleanupExpiredDataAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshotCutoff = now.AddDays(-Math.Max(1, _options.SnapshotRetentionDays));
+        var changeEventCutoff = now.AddDays(-Math.Max(1, _options.ChangeEventRetentionDays));
+        var actionCutoff = now.AddDays(-Math.Max(1, _options.ActionRetentionDays));
+
+        return _centralStore.CleanupExpiredDataAsync(snapshotCutoff, changeEventCutoff, actionCutoff, cancellationToken);
+    }
+
     private async Task<StoredAgent> GetAuthorizedAgentAsync(
         string installationId,
         string? token,
@@ -256,7 +314,32 @@ public sealed class CentralService
             throw new UnauthorizedAccessException("Invalid agent credentials.");
         }
 
+        if (string.Equals(agent.Status, AgentStatuses.Revoked, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Agent access has been revoked.");
+        }
+
         return agent;
+    }
+
+    private static AgentControlResultDto BuildAgentControlResult(
+        StoredAgent agent,
+        string action,
+        string message)
+        => new(
+            agent.AgentId,
+            agent.InstallationId,
+            agent.Status,
+            action,
+            message,
+            DateTimeOffset.UtcNow);
+
+    private static void EnsureRequestedBy(AgentControlRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.RequestedBy))
+        {
+            throw new InvalidOperationException("RequestedBy is required.");
+        }
     }
 
     private static void EnsureApproved(StoredAgent agent)

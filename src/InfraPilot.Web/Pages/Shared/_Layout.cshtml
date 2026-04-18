@@ -32,6 +32,16 @@
                     <a class="top-nav-link @(isFleetPage ? "active" : null)" asp-area="" asp-page="/Index">Fleet</a>
                     <a class="top-nav-link @(isActivityPage ? "active" : null)" asp-area="" asp-page="/Activity">Activity</a>
                 </nav>
+
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="operator-shell">
+                        <span class="operator-chip">@User.Identity?.Name</span>
+                        <form method="post" asp-page="/Account/Logout" class="inline-form">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Logout</button>
+                        </form>
+                    </div>
+                }
             </div>
         </header>
 

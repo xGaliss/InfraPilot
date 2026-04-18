@@ -14,7 +14,11 @@ public sealed class CentralApiClient
     public CentralApiClient(HttpClient httpClient, IOptions<CentralApiOptions> options)
     {
         _httpClient = httpClient;
-        _httpClient.BaseAddress = new Uri(options.Value.BaseUrl.TrimEnd('/') + "/");
+        var configuredOptions = options.Value;
+        ValidateTransport(configuredOptions);
+        _httpClient.BaseAddress = new Uri(configuredOptions.BaseUrl.TrimEnd('/') + "/");
+        _httpClient.DefaultRequestHeaders.Remove("x-operator-key");
+        _httpClient.DefaultRequestHeaders.Add("x-operator-key", configuredOptions.OperatorApiKey);
     }
 
     public async Task<IReadOnlyList<AgentListItemDto>> GetAgentsAsync(CancellationToken cancellationToken)
@@ -44,26 +48,37 @@ public sealed class CentralApiClient
                cancellationToken)
            ?? [];
 
-    public async Task ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
+    public async Task<AgentControlResultDto> ApproveAgentAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.PostAsync($"api/agents/{agentId:D}/approve", content: null, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await _httpClient.PostAsJsonAsync($"api/agents/{agentId:D}/approve", request, cancellationToken);
+        return await ReadRequiredAsync<AgentControlResultDto>(response, "approve", cancellationToken);
+    }
+
+    public async Task<AgentControlResultDto> RevokeAgentAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.PostAsJsonAsync($"api/agents/{agentId:D}/revoke", request, cancellationToken);
+        return await ReadRequiredAsync<AgentControlResultDto>(response, "revoke", cancellationToken);
+    }
+
+    public async Task<AgentControlResultDto> ResetAgentTokenAsync(
+        Guid agentId,
+        AgentControlRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.PostAsJsonAsync($"api/agents/{agentId:D}/reset-token", request, cancellationToken);
+        return await ReadRequiredAsync<AgentControlResultDto>(response, "reset token", cancellationToken);
     }
 
     public async Task<ActionCommandSummaryDto> CreateActionAsync(ActionCommandCreateRequestDto request, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.PostAsJsonAsync("api/actions", request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new HttpRequestException(
-                $"Central API rejected the action request with {(int)response.StatusCode}: {body}",
-                null,
-                response.StatusCode);
-        }
-
-        return await response.Content.ReadFromJsonAsync<ActionCommandSummaryDto>(cancellationToken: cancellationToken)
-               ?? throw new InvalidOperationException("The central API returned an empty action payload.");
+        return await ReadRequiredAsync<ActionCommandSummaryDto>(response, "queue action", cancellationToken);
     }
 
     public async Task<ActionCommandSummaryDto> CancelActionAsync(
@@ -72,16 +87,36 @@ public sealed class CentralApiClient
         CancellationToken cancellationToken)
     {
         using var response = await _httpClient.PostAsJsonAsync($"api/actions/{actionId:D}/cancel", request, cancellationToken);
+        return await ReadRequiredAsync<ActionCommandSummaryDto>(response, "cancel action", cancellationToken);
+    }
+
+    private static void ValidateTransport(CentralApiOptions options)
+    {
+        var uri = new Uri(options.BaseUrl, UriKind.Absolute);
+        if (options.AllowInsecureTransport || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"CentralApi:BaseUrl '{options.BaseUrl}' uses insecure HTTP while AllowInsecureTransport is disabled.");
+    }
+
+    private static async Task<T> ReadRequiredAsync<T>(
+        HttpResponseMessage response,
+        string operationName,
+        CancellationToken cancellationToken)
+    {
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             throw new HttpRequestException(
-                $"Central API rejected the cancel request with {(int)response.StatusCode}: {body}",
+                $"Central API rejected the {operationName} request with {(int)response.StatusCode}: {body}",
                 null,
                 response.StatusCode);
         }
 
-        return await response.Content.ReadFromJsonAsync<ActionCommandSummaryDto>(cancellationToken: cancellationToken)
-               ?? throw new InvalidOperationException("The central API returned an empty cancel payload.");
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken)
+               ?? throw new InvalidOperationException($"The central API returned an empty payload for {operationName}.");
     }
 }

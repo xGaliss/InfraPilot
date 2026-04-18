@@ -83,6 +83,20 @@
                         <button type="submit" class="btn btn-primary">Approve agent</button>
                     </form>
                 }
+                @if (Model.Agent.Status != "Revoked")
+                {
+                    <form method="post" asp-page-handler="ResetToken">
+                        <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                        <input type="hidden" name="section" value="@Model.SelectedSection" />
+                        <button type="submit" class="btn btn-outline-secondary">Rotate token</button>
+                    </form>
+
+                    <form method="post" asp-page-handler="Revoke">
+                        <input type="hidden" name="agentId" value="@Model.Agent.AgentId" />
+                        <input type="hidden" name="section" value="@Model.SelectedSection" />
+                        <button type="submit" class="btn btn-outline-danger">Revoke agent</button>
+                    </form>
+                }
                 <a asp-page="/Index" class="btn btn-outline-secondary">Back to fleet</a>
             </div>
         </section>

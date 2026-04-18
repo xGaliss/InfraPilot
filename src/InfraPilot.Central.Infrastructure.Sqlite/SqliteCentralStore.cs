@@ -571,7 +571,7 @@ public sealed class SqliteCentralStore : ICentralStore
             recentChanges);
     }
 
-    public async Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
+    public async Task<StoredAgent?> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -585,8 +585,54 @@ public sealed class SqliteCentralStore : ICentralStore
         command.Parameters.AddWithValue("$status", AgentStatuses.Approved);
         command.Parameters.AddWithValue("$approvedUtc", ToDb(DateTimeOffset.UtcNow));
         command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
-        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
-        return affected > 0;
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await GetStoredAgentByIdAsync(connection, agentId, cancellationToken);
+    }
+
+    public async Task<StoredAgent?> RevokeAgentAsync(Guid agentId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE Agents
+            SET Status = $status,
+                AccessToken = $accessToken
+            WHERE AgentId = $agentId;
+            """;
+        command.Parameters.AddWithValue("$status", AgentStatuses.Revoked);
+        command.Parameters.AddWithValue("$accessToken", Guid.NewGuid().ToString("N"));
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await GetStoredAgentByIdAsync(connection, agentId, cancellationToken);
+    }
+
+    public async Task<StoredAgent?> ResetAgentTokenAsync(Guid agentId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE Agents
+            SET AccessToken = $accessToken
+            WHERE AgentId = $agentId;
+            """;
+        command.Parameters.AddWithValue("$accessToken", Guid.NewGuid().ToString("N"));
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await GetStoredAgentByIdAsync(connection, agentId, cancellationToken);
     }
 
     public async Task<ActionCommandSummaryDto> CreateActionAsync(ActionCommandCreateRequestDto request, CancellationToken cancellationToken)
@@ -687,6 +733,45 @@ public sealed class SqliteCentralStore : ICentralStore
         }
 
         return await GetActionSummaryByIdAsync(connection, actionId, cancellationToken);
+    }
+
+    public async Task<RetentionCleanupResult> CleanupExpiredDataAsync(
+        DateTimeOffset snapshotCutoffUtc,
+        DateTimeOffset changeEventCutoffUtc,
+        DateTimeOffset actionCutoffUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        var deletedSnapshots = await DeleteByCutoffAsync(
+            connection,
+            transaction,
+            """
+            DELETE FROM CapabilitySnapshots
+            WHERE CollectedUtc < $cutoffUtc;
+            """,
+            snapshotCutoffUtc,
+            cancellationToken);
+
+        var deletedChangeEvents = await DeleteByCutoffAsync(
+            connection,
+            transaction,
+            """
+            DELETE FROM CapabilityChangeEvents
+            WHERE CollectedUtc < $cutoffUtc;
+            """,
+            changeEventCutoffUtc,
+            cancellationToken);
+
+        var deletedActions = await DeleteCompletedActionsByCutoffAsync(
+            connection,
+            transaction,
+            actionCutoffUtc,
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+        return new RetentionCleanupResult(deletedSnapshots, deletedChangeEvents, deletedActions);
     }
 
     private async Task<IReadOnlyDictionary<Guid, IReadOnlyList<string>>> GetCapabilityKeysAsync(SqliteConnection connection, CancellationToken cancellationToken)
@@ -1429,6 +1514,67 @@ public sealed class SqliteCentralStore : ICentralStore
             reader.IsDBNull(11) ? 0 : Convert.ToInt32(reader.GetValue(11)),
             reader.IsDBNull(12) ? null : reader.GetString(12),
             reader.IsDBNull(13) ? null : reader.GetString(13));
+    }
+
+    private async Task<StoredAgent?> GetStoredAgentByIdAsync(
+        SqliteConnection connection,
+        Guid agentId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT AgentId, InstallationId, DisplayName, MachineName, Status, AgentVersion, AccessToken, CreatedUtc, ApprovedUtc, LastSeenUtc
+            FROM Agents
+            WHERE AgentId = $agentId
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$agentId", agentId.ToString("D"));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return ReadStoredAgent(reader);
+    }
+
+    private static async Task<int> DeleteByCutoffAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$cutoffUtc", ToDb(cutoffUtc));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<int> DeleteCompletedActionsByCutoffAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            DELETE FROM ActionCommands
+            WHERE CompletedUtc IS NOT NULL
+              AND CompletedUtc < $cutoffUtc
+              AND Status IN ($succeeded, $failed, $timedOut, $cancelled);
+            """;
+        command.Parameters.AddWithValue("$cutoffUtc", ToDb(cutoffUtc));
+        command.Parameters.AddWithValue("$succeeded", ActionStatuses.Succeeded);
+        command.Parameters.AddWithValue("$failed", ActionStatuses.Failed);
+        command.Parameters.AddWithValue("$timedOut", ActionStatuses.TimedOut);
+        command.Parameters.AddWithValue("$cancelled", ActionStatuses.Cancelled);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static StoredAgent ReadStoredAgent(SqliteDataReader reader)

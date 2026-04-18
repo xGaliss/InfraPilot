@@ -1,0 +1,37 @@
+@page
+@model InfraPilot.Web.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="login-shell">
+    <section class="login-card">
+        <div class="login-brand">
+            <img src="~/brand/infrahub-logo-nobg.svg" alt="InfraPilot logo" class="login-logo" />
+            <div>
+                <p class="eyebrow">Operator Access</p>
+                <h1>Sign in to InfraPilot</h1>
+                <p class="capability-preview">Use the local operator account configured for this console.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="flash-banner flash-error">@Model.ErrorMessage</div>
+        }
+
+        <form method="post" class="login-form">
+            <div class="form-field">
+                <label asp-for="Input.Username"></label>
+                <input asp-for="Input.Username" class="filter-input" autocomplete="username" />
+            </div>
+
+            <div class="form-field">
+                <label asp-for="Input.Password"></label>
+                <input asp-for="Input.Password" class="filter-input" autocomplete="current-password" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+    </section>
+</div>

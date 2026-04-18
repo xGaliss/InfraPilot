@@ -144,6 +144,101 @@ public sealed class SqliteCentralStoreTests : IDisposable
         Assert.Equal(0, cancelled.AttemptCount);
     }
 
+    [Fact]
+    public async Task Agents_can_be_revoked_and_their_token_rotated()
+    {
+        var store = CreateStore();
+        var agent = await CreateApprovedAgentAsync(store);
+
+        var revoked = await store.RevokeAgentAsync(agent.AgentId, CancellationToken.None);
+        var reloaded = await store.GetAgentByInstallationIdAsync(agent.InstallationId, CancellationToken.None);
+
+        Assert.NotNull(revoked);
+        Assert.NotNull(reloaded);
+        Assert.Equal(AgentStatuses.Revoked, revoked!.Status);
+        Assert.Equal(AgentStatuses.Revoked, reloaded!.Status);
+        Assert.NotEqual(agent.AccessToken, revoked.AccessToken);
+    }
+
+    [Fact]
+    public async Task Resetting_agent_token_keeps_agent_but_rotates_credentials()
+    {
+        var store = CreateStore();
+        var agent = await CreateApprovedAgentAsync(store);
+
+        var reset = await store.ResetAgentTokenAsync(agent.AgentId, CancellationToken.None);
+        var reloaded = await store.GetAgentByInstallationIdAsync(agent.InstallationId, CancellationToken.None);
+
+        Assert.NotNull(reset);
+        Assert.NotNull(reloaded);
+        Assert.Equal(AgentStatuses.Approved, reset!.Status);
+        Assert.NotEqual(agent.AccessToken, reset.AccessToken);
+        Assert.Equal(reset.AccessToken, reloaded!.AccessToken);
+    }
+
+    [Fact]
+    public async Task Retention_cleanup_removes_old_snapshots_and_change_events()
+    {
+        var store = CreateStore();
+        var agent = await CreateApprovedAgentAsync(store);
+
+        await store.ReplaceCapabilitiesAsync(
+            agent.AgentId,
+            [
+                new CapabilityDescriptorDto(
+                    CapabilityKeys.Services,
+                    "Windows Services",
+                    "1.0.0",
+                    [])
+            ],
+            CancellationToken.None);
+
+        await store.AddSnapshotsAsync(
+            agent.AgentId,
+            DateTimeOffset.Parse("2026-04-10T10:00:00Z"),
+            [
+                CreateServiceSnapshot(
+                    "hash-old-1",
+                    new ServiceStatusDto("Spooler", "Print Spooler", "Running", "True", "Win32OwnProcess"))
+            ],
+            CancellationToken.None);
+
+        await store.AddSnapshotsAsync(
+            agent.AgentId,
+            DateTimeOffset.Parse("2026-04-10T10:05:00Z"),
+            [
+                CreateServiceSnapshot(
+                    "hash-old-2",
+                    new ServiceStatusDto("Spooler", "Print Spooler", "Stopped", "True", "Win32OwnProcess"))
+            ],
+            CancellationToken.None);
+
+        await store.AddSnapshotsAsync(
+            agent.AgentId,
+            DateTimeOffset.Parse("2026-04-18T10:05:00Z"),
+            [
+                CreateServiceSnapshot(
+                    "hash-new-1",
+                    new ServiceStatusDto("Spooler", "Print Spooler", "Running", "True", "Win32OwnProcess"))
+            ],
+            CancellationToken.None);
+
+        var cleanup = await store.CleanupExpiredDataAsync(
+            DateTimeOffset.Parse("2026-04-17T00:00:00Z"),
+            DateTimeOffset.Parse("2026-04-17T00:00:00Z"),
+            DateTimeOffset.Parse("2026-04-17T00:00:00Z"),
+            CancellationToken.None);
+
+        var history = await store.GetCapabilityHistoryAsync(agent.AgentId, CapabilityKeys.Services, 10, CancellationToken.None);
+        var changes = await store.GetChangeFeedAsync(agent.AgentId, 10, CancellationToken.None);
+
+        Assert.True(cleanup.SnapshotsDeleted >= 2);
+        Assert.True(cleanup.ChangeEventsDeleted >= 2);
+        Assert.Single(history);
+        Assert.Single(changes);
+        Assert.Equal("hash-new-1", history[0].Hash);
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_databaseDirectory))

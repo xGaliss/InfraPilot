@@ -21,6 +21,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         _httpClient = httpClient;
         _options = options.Value;
         _logger = logger;
+        ValidateTransport();
         _httpClient.BaseAddress = new Uri(_options.CentralBaseUrl.TrimEnd('/') + "/");
         _httpClient.Timeout = TimeSpan.FromSeconds(Math.Max(5, _options.HttpTimeoutSeconds));
     }
@@ -35,8 +36,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
             Environment.MachineName,
             _options.AgentVersion));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendAsync(request, cancellationToken);
 
         var payload = await response.Content.ReadFromJsonAsync<AgentEnrollResponseDto>(cancellationToken: cancellationToken);
         return payload ?? throw new InvalidOperationException("Central enrollment returned an empty response.");
@@ -51,8 +51,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
             _options.AgentVersion,
             DateTimeOffset.UtcNow));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendAsync(request, cancellationToken);
     }
 
     public async Task PublishCapabilitiesAsync(
@@ -64,8 +63,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         AddAgentHeaders(request, identity);
         request.Content = JsonContent.Create(new AgentCapabilityPublishRequestDto(identity.InstallationId, capabilities));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendAsync(request, cancellationToken);
     }
 
     public async Task PublishSnapshotsAsync(
@@ -80,8 +78,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
             DateTimeOffset.UtcNow,
             snapshots));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendAsync(request, cancellationToken);
     }
 
     public async Task<AgentActionCommandDto?> PullNextActionAsync(AgentIdentity identity, CancellationToken cancellationToken)
@@ -90,13 +87,11 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         AddAgentHeaders(request, identity);
         request.Content = JsonContent.Create(new AgentPullRequestDto(identity.InstallationId));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendAsync(request, cancellationToken, allowNoContent: true);
         if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
         {
             return null;
         }
-
-        response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AgentActionCommandDto>(cancellationToken: cancellationToken);
     }
 
@@ -110,8 +105,7 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         AddAgentHeaders(request, identity);
         request.Content = JsonContent.Create(result);
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendAsync(request, cancellationToken);
     }
 
     private void AddAgentHeaders(HttpRequestMessage request, AgentIdentity identity)
@@ -122,5 +116,38 @@ public sealed class CentralAgentApiClient : ICentralAgentApiClient
         }
 
         request.Headers.Add("x-agent-token", identity.AccessToken);
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken,
+        bool allowNoContent = false)
+    {
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            response.Dispose();
+            throw new AgentUnauthorizedException("The central API rejected the agent credentials.");
+        }
+
+        if (allowNoContent && response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return response;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return response;
+    }
+
+    private void ValidateTransport()
+    {
+        var uri = new Uri(_options.CentralBaseUrl, UriKind.Absolute);
+        if (_options.AllowInsecureTransport || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"CentralBaseUrl '{_options.CentralBaseUrl}' uses insecure HTTP while AllowInsecureTransport is disabled.");
     }
 }

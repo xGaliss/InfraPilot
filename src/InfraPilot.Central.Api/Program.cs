@@ -1,4 +1,5 @@
 using InfraPilot.Central.Application;
+using InfraPilot.Central.Api;
 using InfraPilot.Central.Infrastructure.Sqlite;
 using InfraPilot.Contracts.Actions;
 using InfraPilot.Contracts.Agents;
@@ -8,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfraPilotCentralApplication(builder.Configuration);
 builder.Services.AddInfraPilotSqliteStore();
+builder.Services.AddHostedService<RetentionCleanupHostedService>();
 
 var app = builder.Build();
 
@@ -64,6 +66,10 @@ app.MapPost("/api/agents/heartbeat", async (
     catch (UnauthorizedAccessException)
     {
         return Results.Unauthorized();
+    }
+    catch (InvalidOperationException)
+    {
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
 });
 
@@ -173,16 +179,19 @@ app.MapPost("/api/actions/{actionId:guid}/result", async (
     }
 });
 
-app.MapGet("/api/agents", async (CentralService centralService, CancellationToken cancellationToken)
+var operatorGroup = app.MapGroup("/api")
+    .AddEndpointFilter<OperatorApiKeyEndpointFilter>();
+
+operatorGroup.MapGet("/agents", async (CentralService centralService, CancellationToken cancellationToken)
     => Results.Ok(await centralService.GetAgentsAsync(cancellationToken)));
 
-app.MapGet("/api/agents/{agentId:guid}", async (Guid agentId, CentralService centralService, CancellationToken cancellationToken) =>
+operatorGroup.MapGet("/agents/{agentId:guid}", async (Guid agentId, CentralService centralService, CancellationToken cancellationToken) =>
 {
     var detail = await centralService.GetAgentDetailAsync(agentId, cancellationToken);
     return detail is null ? Results.NotFound() : Results.Ok(detail);
 });
 
-app.MapGet("/api/agents/{agentId:guid}/capabilities/{capabilityKey}/history", async (
+operatorGroup.MapGet("/agents/{agentId:guid}/capabilities/{capabilityKey}/history", async (
     Guid agentId,
     string capabilityKey,
     int? take,
@@ -193,26 +202,80 @@ app.MapGet("/api/agents/{agentId:guid}/capabilities/{capabilityKey}/history", as
     return Results.Ok(history);
 });
 
-app.MapGet("/api/agents/{agentId:guid}/changes", async (
+operatorGroup.MapGet("/agents/{agentId:guid}/changes", async (
     Guid agentId,
     int? take,
     CentralService centralService,
     CancellationToken cancellationToken) =>
     Results.Ok(await centralService.GetChangeFeedAsync(agentId, take ?? 20, cancellationToken)));
 
-app.MapGet("/api/changes", async (
+operatorGroup.MapGet("/changes", async (
     int? take,
     CentralService centralService,
     CancellationToken cancellationToken) =>
     Results.Ok(await centralService.GetChangeFeedAsync(null, take ?? 50, cancellationToken)));
 
-app.MapPost("/api/agents/{agentId:guid}/approve", async (Guid agentId, CentralService centralService, CancellationToken cancellationToken) =>
+operatorGroup.MapPost("/agents/{agentId:guid}/approve", async (
+    Guid agentId,
+    AgentControlRequestDto payload,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
 {
-    var approved = await centralService.ApproveAgentAsync(agentId, cancellationToken);
-    return approved ? Results.Ok(new { approved = true }) : Results.NotFound();
+    try
+    {
+        return Results.Ok(await centralService.ApproveAgentAsync(agentId, payload, cancellationToken));
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
 });
 
-app.MapPost("/api/actions", async (
+operatorGroup.MapPost("/agents/{agentId:guid}/revoke", async (
+    Guid agentId,
+    AgentControlRequestDto payload,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await centralService.RevokeAgentAsync(agentId, payload, cancellationToken));
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+});
+
+operatorGroup.MapPost("/agents/{agentId:guid}/reset-token", async (
+    Guid agentId,
+    AgentControlRequestDto payload,
+    CentralService centralService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Ok(await centralService.ResetAgentTokenAsync(agentId, payload, cancellationToken));
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+});
+
+operatorGroup.MapPost("/actions", async (
     ActionCommandCreateRequestDto payload,
     CentralService centralService,
     CancellationToken cancellationToken) =>
@@ -232,7 +295,7 @@ app.MapPost("/api/actions", async (
     }
 });
 
-app.MapPost("/api/actions/{actionId:guid}/cancel", async (
+operatorGroup.MapPost("/actions/{actionId:guid}/cancel", async (
     Guid actionId,
     ActionCommandCancelRequestDto payload,
     CentralService centralService,

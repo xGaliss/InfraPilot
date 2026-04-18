@@ -10,6 +10,8 @@ public sealed class AgentOptions
 
     public string CentralBaseUrl { get; set; } = "http://localhost:5180";
 
+    public bool AllowInsecureTransport { get; set; } = true;
+
     public string EnrollmentKey { get; set; } = "infra-dev-enroll";
 
     public string DataDirectory { get; set; } = "data\\agent";

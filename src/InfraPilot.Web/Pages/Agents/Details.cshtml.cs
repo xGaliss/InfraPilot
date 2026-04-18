@@ -67,9 +67,54 @@ public sealed class DetailsModel : PageModel
 
     public async Task<IActionResult> OnPostApproveAsync(Guid agentId, string? section, CancellationToken cancellationToken)
     {
-        await _centralApiClient.ApproveAgentAsync(agentId, cancellationToken);
+        var result = await _centralApiClient.ApproveAgentAsync(
+            agentId,
+            BuildControlRequest("Approved from the agent workspace."),
+            cancellationToken);
         StatusTone = "success";
-        StatusMessage = "Agent approved. It can now publish snapshots and receive actions.";
+        StatusMessage = result.Message;
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
+    }
+
+    public async Task<IActionResult> OnPostRevokeAsync(Guid agentId, string? section, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _centralApiClient.RevokeAgentAsync(
+                agentId,
+                BuildControlRequest("Revoked from the agent workspace."),
+                cancellationToken);
+
+            StatusTone = "success";
+            StatusMessage = result.Message;
+        }
+        catch (HttpRequestException exception)
+        {
+            StatusTone = "error";
+            StatusMessage = $"The agent could not be revoked. {exception.Message}";
+        }
+
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
+    }
+
+    public async Task<IActionResult> OnPostResetTokenAsync(Guid agentId, string? section, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _centralApiClient.ResetAgentTokenAsync(
+                agentId,
+                BuildControlRequest("Token rotated from the agent workspace."),
+                cancellationToken);
+
+            StatusTone = "success";
+            StatusMessage = result.Message;
+        }
+        catch (HttpRequestException exception)
+        {
+            StatusTone = "error";
+            StatusMessage = $"The token could not be rotated. {exception.Message}";
+        }
+
         return RedirectToPage(pageName: null, pageHandler: null, routeValues: BuildRouteValues(agentId, section));
     }
 
@@ -475,6 +520,9 @@ public sealed class DetailsModel : PageModel
 
     private static bool AreSetsEqual(IEnumerable<string>? left, IEnumerable<string>? right)
         => new HashSet<string>(left ?? [], StringComparer.OrdinalIgnoreCase).SetEquals(right ?? []);
+
+    private AgentControlRequestDto BuildControlRequest(string reason)
+        => new(User.Identity?.Name ?? "WebUI", reason);
 
     public sealed record CapabilityHistoryEntryViewModel(
         CapabilitySnapshotHistoryItemDto Item,

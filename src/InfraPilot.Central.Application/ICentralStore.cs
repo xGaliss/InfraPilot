@@ -29,7 +29,11 @@ public interface ICentralStore
 
     Task<AgentDetailDto?> GetAgentDetailAsync(Guid agentId, CancellationToken cancellationToken);
 
-    Task<bool> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken);
+    Task<StoredAgent?> ApproveAgentAsync(Guid agentId, CancellationToken cancellationToken);
+
+    Task<StoredAgent?> RevokeAgentAsync(Guid agentId, CancellationToken cancellationToken);
+
+    Task<StoredAgent?> ResetAgentTokenAsync(Guid agentId, CancellationToken cancellationToken);
 
     Task<ActionCommandSummaryDto> CreateActionAsync(ActionCommandCreateRequestDto request, CancellationToken cancellationToken);
 
@@ -48,5 +52,11 @@ public interface ICentralStore
         Guid actionId,
         string requestedBy,
         string? reason,
+        CancellationToken cancellationToken);
+
+    Task<RetentionCleanupResult> CleanupExpiredDataAsync(
+        DateTimeOffset snapshotCutoffUtc,
+        DateTimeOffset changeEventCutoffUtc,
+        DateTimeOffset actionCutoffUtc,
         CancellationToken cancellationToken);
 }

@@ -61,52 +61,61 @@ public sealed class AgentRuntimeCoordinator
     }
 
     public async Task PublishCapabilitiesAsync(CancellationToken cancellationToken)
-    {
-        var identity = await GetIdentityAsync(cancellationToken);
-        var descriptors = _capabilityModules.Values
-            .Select(module => module.Describe())
-            .OrderBy(descriptor => descriptor.CapabilityKey, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        => await ExecuteWithReenrollmentAsync(async identity =>
+        {
+            var descriptors = _capabilityModules.Values
+                .Select(module => module.Describe())
+                .OrderBy(descriptor => descriptor.CapabilityKey, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-        await _centralAgentApiClient.PublishCapabilitiesAsync(identity, descriptors, cancellationToken);
-        _logger.LogDebug("Published {Count} capability descriptors.", descriptors.Count);
-    }
+            await _centralAgentApiClient.PublishCapabilitiesAsync(identity, descriptors, cancellationToken);
+            _logger.LogDebug("Published {Count} capability descriptors.", descriptors.Count);
+        }, cancellationToken);
 
     public async Task SendHeartbeatAsync(CancellationToken cancellationToken)
-    {
-        var identity = await GetIdentityAsync(cancellationToken);
-        await _centralAgentApiClient.SendHeartbeatAsync(identity, cancellationToken);
-    }
-
-    public async Task PublishSnapshotsAsync(CancellationToken cancellationToken)
-    {
-        var identity = await GetIdentityAsync(cancellationToken);
-        var snapshots = new List<CapabilitySnapshotDto>();
-
-        foreach (var capabilityModule in _capabilityModules.Values.OrderBy(module => module.Describe().CapabilityKey, StringComparer.OrdinalIgnoreCase))
-        {
-            var snapshot = await capabilityModule.CollectSnapshotAsync(cancellationToken);
-            var payloadJson = JsonSerializer.Serialize(snapshot.Payload, JsonOptions);
-            snapshots.Add(new CapabilitySnapshotDto(
-                snapshot.CapabilityKey,
-                snapshot.SchemaVersion,
-                SnapshotHashing.Compute(payloadJson),
-                payloadJson));
-        }
-
-        await _centralAgentApiClient.PublishCapabilitiesAsync(
-            identity,
-            _capabilityModules.Values.Select(module => module.Describe()).ToList(),
+        => await ExecuteWithReenrollmentAsync(
+            identity => _centralAgentApiClient.SendHeartbeatAsync(identity, cancellationToken),
             cancellationToken);
 
-        await _centralAgentApiClient.PublishSnapshotsAsync(identity, snapshots, cancellationToken);
-        _logger.LogInformation("Published {Count} capability snapshots.", snapshots.Count);
-    }
+    public async Task PublishSnapshotsAsync(CancellationToken cancellationToken)
+        => await ExecuteWithReenrollmentAsync(async identity =>
+        {
+            var snapshots = new List<CapabilitySnapshotDto>();
+
+            foreach (var capabilityModule in _capabilityModules.Values.OrderBy(module => module.Describe().CapabilityKey, StringComparer.OrdinalIgnoreCase))
+            {
+                var snapshot = await capabilityModule.CollectSnapshotAsync(cancellationToken);
+                var payloadJson = JsonSerializer.Serialize(snapshot.Payload, JsonOptions);
+                snapshots.Add(new CapabilitySnapshotDto(
+                    snapshot.CapabilityKey,
+                    snapshot.SchemaVersion,
+                    SnapshotHashing.Compute(payloadJson),
+                    payloadJson));
+            }
+
+            await _centralAgentApiClient.PublishCapabilitiesAsync(
+                identity,
+                _capabilityModules.Values.Select(module => module.Describe()).ToList(),
+                cancellationToken);
+
+            await _centralAgentApiClient.PublishSnapshotsAsync(identity, snapshots, cancellationToken);
+            _logger.LogInformation("Published {Count} capability snapshots.", snapshots.Count);
+        }, cancellationToken);
 
     public async Task TryExecuteNextActionAsync(CancellationToken cancellationToken)
     {
         var identity = await GetIdentityAsync(cancellationToken);
-        var command = await _centralAgentApiClient.PullNextActionAsync(identity, cancellationToken);
+        AgentActionCommandDto? command;
+        try
+        {
+            command = await _centralAgentApiClient.PullNextActionAsync(identity, cancellationToken);
+        }
+        catch (AgentUnauthorizedException)
+        {
+            identity = await ReenrollAsync(cancellationToken);
+            command = await _centralAgentApiClient.PullNextActionAsync(identity, cancellationToken);
+        }
+
         if (command is null)
         {
             return;
@@ -162,6 +171,33 @@ public sealed class AgentRuntimeCoordinator
 
     private async Task<AgentIdentity> GetIdentityAsync(CancellationToken cancellationToken)
     {
+        await EnsureRegisteredAsync(cancellationToken);
+        return await _identityStore.GetOrCreateAsync(cancellationToken);
+    }
+
+    private async Task ExecuteWithReenrollmentAsync(
+        Func<AgentIdentity, Task> action,
+        CancellationToken cancellationToken)
+    {
+        var identity = await GetIdentityAsync(cancellationToken);
+
+        try
+        {
+            await action(identity);
+        }
+        catch (AgentUnauthorizedException)
+        {
+            identity = await ReenrollAsync(cancellationToken);
+            await action(identity);
+        }
+    }
+
+    private async Task<AgentIdentity> ReenrollAsync(CancellationToken cancellationToken)
+    {
+        var identity = await _identityStore.GetOrCreateAsync(cancellationToken);
+        identity.AccessToken = null;
+        await _identityStore.SaveAsync(identity, cancellationToken);
+        _logger.LogWarning("Agent credentials were rejected by the central API. Clearing the local token and re-enrolling.");
         await EnsureRegisteredAsync(cancellationToken);
         return await _identityStore.GetOrCreateAsync(cancellationToken);
     }
